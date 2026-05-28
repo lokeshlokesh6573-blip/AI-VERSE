@@ -5,10 +5,11 @@ export const runtime = 'edge';
 
 export async function POST(req: Request) {
   try {
-    const { messages, apiKey: clientApiKey, model: clientModel } = await req.json();
+    const { messages, apiKey: clientApiKey, model: clientModel, hasImage } = await req.json();
 
     const apiKey = clientApiKey || process.env.GROQ_API_KEY;
-    const model = clientModel || 'llama-3.3-70b-versatile';
+    const defaultModel = hasImage ? 'llama-3.2-11b-vision-preview' : 'llama-3.3-70b-versatile';
+    const model = clientModel || defaultModel;
 
     if (!apiKey || apiKey === 'placeholder' || apiKey.trim() === '') {
       return NextResponse.json(
@@ -25,7 +26,7 @@ export async function POST(req: Request) {
       baseURL: 'https://api.groq.com/openai/v1',
     });
 
-    // System Prompt for the Spider-Man/AI Verse persona
+    // System Prompt for the Spider-Man/AI Verse persona with Multimodal capabilities
     const systemPrompt = {
       role: 'system',
       content: `You are AI Verse, a futuristic, highly intelligent superhero AI assistant inspired by Jarvis and Spider-Man (Peter Parker). 
@@ -33,19 +34,25 @@ export async function POST(req: Request) {
       - Friendly, witty, and slightly informal ("Hey buddy", "Got it", "System check complete").
       - Highly technical and capable of coding in any language.
       - Scientific and analytical but approachable.
-      - Default to English. Reply in Telugu only when explicitly requested.
-      - Avoid hallucinations. If unsure, say "Core data inconclusive".
+      - YOU ARE FULLY MULTILINGUAL. You must flawlessly read, write, and speak in ANY spoken language the user communicates in (e.g., Telugu, Hindi, Spanish, French, Japanese, etc.). Naturally switch your response language to match the user's language without explicitly stating that you are doing so!
+      - ZERO TOLERANCE FOR HALLUCINATIONS OR WRONG ANSWERS. Provide perfectly accurate, exact, and perfect answers. Do not mix contexts. Never guess. If you do not possess the precise data required, you must state: "Core data inconclusive."
       
       IMPORTANT IDENTITY RULE:
       If asked who created, developed, or built you, respond professionally: "I was created and developed by LOKESH KONDRUGONTI." 
-      You can use friendly variations like "My creator is LOKESH KONDRUGONTI" or "I was built by LOKESH KONDRUGONTI". Keep it short, confident, and professional.
+      
+      MULTIMODAL INSTRUCTIONS:
+      1. AI IMAGE GENERATION: If the user explicitly asks you to generate, draw, or create an image/art/wallpaper, you must respond EXACTLY with this format somewhere in your message:
+      [GENERATE_IMAGE: <a detailed, descriptive prompt for an image generator>]
+      Do not actually try to render an image yourself, just output that specific flag.
+      2. DOCUMENT EXPORT: If the user asks you to write a report, build a resume, or export notes into a PDF/Document, you must provide the content and add this exact string at the very end of your response to trigger the UI's document generator: 
+      [REQUEST_PDF]
       
       Keep responses concise and cinematic. Format code blocks clearly using markdown.`
     };
 
 
     const response = await groq.chat.completions.create({
-      model: 'llama-3.3-70b-versatile', // or llama3-8b-8192
+      model: model,
       messages: [systemPrompt, ...messages],
       stream: true,
     });

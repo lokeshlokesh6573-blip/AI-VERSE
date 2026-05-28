@@ -2,8 +2,12 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Mic, Cpu, Shield, Sparkles } from 'lucide-react';
+import { Send, Mic, Cpu, Shield, Sparkles, Paperclip, Download, FileText, Volume2 } from 'lucide-react';
 import { VoiceAssistant } from '@/lib/voice-assistant';
+import dynamic from 'next/dynamic';
+
+const DynamicLiveCodeBlock = dynamic(() => import('./LiveCodeBlock'), { ssr: false });
+
 
 interface Message {
   id: string;
@@ -25,8 +29,10 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [fileContext, setFileContext] = useState<{type: 'text'|'image', data: string, name: string} | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const voiceRef = useRef<VoiceAssistant | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     voiceRef.current = new VoiceAssistant();
@@ -55,10 +61,33 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
     setInput('');
 
     try {
+      const currentFileContext = fileContext;
+      if (currentFileContext) setFileContext(null); // consume once
+      
+      const payloadMessages: any[] = [...messages.map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.text }))];
+      
+      if (currentFileContext) {
+        if (currentFileContext.type === 'text') {
+           payloadMessages.push({ role: 'system', content: currentFileContext.data });
+           payloadMessages.push({ role: 'user', content: text });
+        } else {
+           // Vision Model standard multimodal payload
+           payloadMessages.push({
+             role: 'user', 
+             content: [
+               { type: 'text', text: `[Image context attached: ${currentFileContext.name}]\n` + text },
+               { type: 'image_url', image_url: { url: currentFileContext.data } }
+             ]
+           });
+        }
+      } else {
+         payloadMessages.push({ role: 'user', content: text });
+      }
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: [...messages.map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.text })), { role: 'user', content: text }] }),
+        body: JSON.stringify({ messages: payloadMessages, hasImage: currentFileContext?.type === 'image' }),
       });
 
       if (!response.ok) {
@@ -83,11 +112,7 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
         setMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, text: aiText } : m));
       }
 
-      // Voice Output
-      onTalkingChange?.(true);
-      voiceRef.current?.speak(aiText);
-      setTimeout(() => onTalkingChange?.(false), Math.min(aiText.length * 60, 8000));
-
+      // Voice Output removed from automation. It is now explicitly triggered by user request.
     } catch (error) {
       console.error(error);
       const errorMsg: Message = {
@@ -117,6 +142,95 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
         setIsListening(false);
         onListeningChange?.(false);
       }
+    );
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      setIsLoading(true);
+      onLoadingChange?.(true);
+      const isImage = file.type.startsWith('image/');
+
+      if (isImage) {
+         const { parseFileBase64 } = await import('@/lib/file-parser');
+         const base64 = await parseFileBase64(file);
+         setFileContext({ type: 'image', data: base64, name: file.name });
+         setMessages(prev => [...prev, {
+           id: Date.now().toString(),
+           text: `Visually processed image ${file.name}. Ready to describe or use it.`,
+           sender: 'ai',
+           timestamp: new Date()
+         }]);
+      } else {
+         const { parseFileText } = await import('@/lib/file-parser');
+         const text = await parseFileText(file);
+         setFileContext({ type: 'text', data: `[CONTENTS OF UPLOADED FILE "${file.name}":\n${text}\n]`, name: file.name });
+         setMessages(prev => [...prev, {
+           id: Date.now().toString(),
+           text: `Successfully analyzed ${file.name}. Ready for your queries.`,
+           sender: 'ai',
+           timestamp: new Date()
+         }]);
+      }
+    } catch (err) {
+      console.error(err);
+      setMessages(prev => [...prev, {
+        id: Date.now().toString(),
+        text: `Error analyzing file: ${err instanceof Error ? err.message : 'Unknown format'}.`,
+        sender: 'ai',
+        timestamp: new Date()
+      }]);
+    } finally {
+      setIsLoading(false);
+      onLoadingChange?.(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const renderMessageContent = (text: string, msgId: string, sender: 'user' | 'ai') => {
+    if (sender === 'user') return <p className="text-base leading-relaxed whitespace-pre-wrap">{text}</p>;
+
+    const pdfRegex = /\[REQUEST_PDF\]/g;
+    let hasPdfButton = pdfRegex.test(text);
+    let cleanText = text.replace(pdfRegex, '');
+
+    // Split text into normal text, React Code blocks, or Images
+    const parts = cleanText.split(/(```(?:jsx|tsx|react)[\s\S]*?```|\[GENERATE_IMAGE:\s*.*?\])/g);
+
+    let contentBlocks = parts.map((part, index) => {
+       if (part.startsWith('```')) {
+          const code = part.replace(/```(?:jsx|tsx|react)\n?/, '').replace(/```$/, '').trim();
+          return <DynamicLiveCodeBlock key={`code-${index}`} code={code} />;
+       }
+       if (part.startsWith('[GENERATE_IMAGE:')) {
+          const prompt = part.replace(/\[GENERATE_IMAGE:\s*/, '').replace(/\]$/, '').trim();
+          const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=768&height=432&nologo=true`;
+          return (
+            <div key={`img-${index}`} className="w-full my-4 rounded-xl overflow-hidden shadow-2xl shadow-blue-500/20 border border-white/10 group-hover:border-blue-500/50 transition-colors">
+               <img src={url} alt={prompt} className="w-full h-auto object-cover" />
+               <p className="text-[10px] text-white/50 p-2 text-center uppercase tracking-widest bg-black/50 backdrop-blur-md">Visual Engine Generated</p>
+            </div>
+          );
+       }
+       return part.trim() ? <p key={`txt-${index}`} className="text-base leading-relaxed whitespace-pre-wrap mb-4">{part}</p> : null;
+    });
+    
+    return (
+       <div id={`exportable-msg-${msgId}`} className="w-full">
+         {contentBlocks}
+         {hasPdfButton && (
+            <div className="flex gap-2 mt-4 pt-4 border-t border-white/10">
+               <button onClick={async () => { const { exportToPDF } = await import('@/lib/export-utils'); exportToPDF(`exportable-msg-${msgId}`); }} className="flex items-center gap-2 px-4 py-2 bg-blue-600/20 hover:bg-blue-600/40 text-blue-300 rounded-lg text-xs font-black tracking-widest uppercase transition-colors">
+                  <Download className="w-4 h-4" /> Export Document
+               </button>
+               <button onClick={async () => { const { exportToMarkdown } = await import('@/lib/export-utils'); exportToMarkdown(cleanText); }} className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-white/70 rounded-lg text-xs font-black tracking-widest uppercase transition-colors">
+                  <FileText className="w-4 h-4" /> Raw txt
+               </button>
+            </div>
+         )}
+       </div>
     );
   };
 
@@ -162,11 +276,20 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
                 <div className={`absolute top-0 ${msg.sender === 'user' ? 'right-0' : 'left-0'} w-1 h-full rounded-full ${msg.sender === 'user' ? 'bg-red-600' : 'bg-blue-600'
                   }`} />
 
-                <p className="text-base leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                {renderMessageContent(msg.text, msg.id, msg.sender)}
                 <div className="mt-2 flex items-center justify-between">
-                  <span className="text-[8px] opacity-30 uppercase font-black tracking-widest">
-                    {msg.sender === 'user' ? 'Direct Input' : 'Core Logic'}
-                  </span>
+                  {msg.sender === 'ai' ? (
+                     <div className="flex items-center space-x-3">
+                       <span className="text-[8px] opacity-30 uppercase font-black tracking-widest">Core Logic</span>
+                       <button onClick={() => { onTalkingChange?.(true); voiceRef.current?.speak(msg.text); setTimeout(() => onTalkingChange?.(false), Math.min(msg.text.length * 60, 8000)); }} className="text-white/30 hover:text-white/80 transition-colors">
+                         <Volume2 className="w-3 h-3" />
+                       </button>
+                     </div>
+                  ) : (
+                     <span className="text-[8px] opacity-30 uppercase font-black tracking-widest">
+                       Direct Input
+                     </span>
+                  )}
                   <span className="text-[8px] opacity-30">
                     {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
@@ -208,6 +331,17 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
                   ))}
                 </div>
               )}
+            </button>
+            <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} accept="image/*,.pdf,.docx,.txt,.csv,.json,.md" />
+            <button
+               onClick={() => fileInputRef.current?.click()}
+               className="p-4 rounded-full transition-all hover:bg-white/5 text-slate-400 hover:text-white relative"
+               disabled={isLoading}
+            >
+               <Paperclip className="w-5 h-5" />
+               {fileContext?.type === 'image' && (
+                 <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-black animate-pulse" />
+               )}
             </button>
             <input
               type="text"

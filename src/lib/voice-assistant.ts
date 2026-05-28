@@ -41,9 +41,17 @@ export class VoiceAssistant {
      this.synthesis.cancel(); // Stop current speech
      const utterance = new SpeechSynthesisUtterance(text);
      
-     // Auto-detect Telugu characters (Unicode range \u0c00-\u0c7f)
+     // Auto-detect Multilingual Characters
      const hasTelugu = /[\u0c00-\u0c7f]/.test(text);
-     const speechLang = hasTelugu ? 'te-IN' : lang;
+     const hasHindi = /[\u0900-\u097F]/.test(text);
+     const hasJapanese = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/.test(text);
+     const hasSpanish = /[áéíóúñÁÉÍÓÚÑ]/.test(text);
+     
+     let speechLang = lang;
+     if (hasTelugu) speechLang = 'te-IN';
+     else if (hasHindi) speechLang = 'hi-IN';
+     else if (hasJapanese) speechLang = 'ja-JP';
+     else if (hasSpanish) speechLang = 'es-ES';
      
      // Peter Parker style voice parameters
      utterance.lang = speechLang;
