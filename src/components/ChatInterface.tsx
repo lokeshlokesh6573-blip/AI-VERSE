@@ -2,9 +2,11 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Mic, Cpu, Shield, Sparkles, Paperclip, Download, FileText, Volume2 } from 'lucide-react';
-import { VoiceAssistant } from '@/lib/voice-assistant';
+import { Send, Mic, Cpu, Shield, Sparkles, Paperclip, Download, FileText, Volume2, Camera } from 'lucide-react';
+import { VoiceAssistant, getVoiceAssistant } from '@/lib/voice-assistant';
 import dynamic from 'next/dynamic';
+import { SquareSquare } from 'lucide-react'; // For formatting Stop icon
+import CameraVision from './CameraVision';
 
 const DynamicLiveCodeBlock = dynamic(() => import('./LiveCodeBlock'), { ssr: false });
 
@@ -30,12 +32,26 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [fileContext, setFileContext] = useState<{type: 'text'|'image', data: string, name: string} | null>(null);
+  const [isOnline, setIsOnline] = useState(true);
+  const [showCamera, setShowCamera] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const voiceRef = useRef<VoiceAssistant | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    voiceRef.current = new VoiceAssistant();
+    setIsOnline(navigator.onLine);
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    return () => {
+       window.removeEventListener('online', handleOnline);
+       window.removeEventListener('offline', handleOffline);
+    }
+  }, []);
+
+  useEffect(() => {
+    voiceRef.current = getVoiceAssistant();
   }, []);
 
   useEffect(() => {
@@ -84,10 +100,23 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
          payloadMessages.push({ role: 'user', content: text });
       }
 
-      const response = await fetch('/api/chat', {
+      let requestUrl = '/api/chat';
+      let payloadBody: any = { messages: payloadMessages, hasImage: currentFileContext?.type === 'image' };
+      let headers: any = { 'Content-Type': 'application/json' };
+
+      if (!isOnline) {
+         requestUrl = 'http://localhost:11434/v1/chat/completions';
+         payloadBody = { 
+           model: 'llama3.2', // default local model
+           messages: payloadMessages, 
+           stream: true 
+         };
+      }
+
+      const response = await fetch(requestUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: payloadMessages, hasImage: currentFileContext?.type === 'image' }),
+        headers,
+        body: JSON.stringify(payloadBody),
       });
 
       if (!response.ok) {
@@ -107,7 +136,24 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
         if (done) break;
 
         const chunk = decoder.decode(value, { stream: true });
-        aiText += chunk;
+        
+        // Handle Ollama SSE format vs default Next.js Text format
+        if (!isOnline) {
+           const lines = chunk.split('\n').filter(line => line.trim() !== '');
+           for (const line of lines) {
+              if (line === 'data: [DONE]') break;
+              if (line.startsWith('data: ')) {
+                 try {
+                   const data = JSON.parse(line.slice(6));
+                   if (data.choices[0].delta.content) {
+                      aiText += data.choices[0].delta.content;
+                   }
+                 } catch(e) {}
+              }
+           }
+        } else {
+           aiText += chunk;
+        }
 
         setMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, text: aiText } : m));
       }
@@ -250,10 +296,28 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
           </div>
         </div>
         <div className="flex space-x-2">
+          {!isOnline ? (
+             <div className="text-[10px] text-orange-500 font-bold animate-pulse px-2 py-1 border border-orange-500/30 bg-orange-900/30 rounded">OFFLINE MODE (OLLAMA LOCAL)</div>
+          ) : (
+             <div className="text-[10px] text-green-500 font-bold px-2 py-1 border border-green-500/30 bg-green-900/30 rounded flex items-center gap-2"><div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" /> CLOUD UPLINK</div>
+          )}
           <Shield className="w-4 h-4 text-blue-500 animate-pulse" />
           <Cpu className="w-4 h-4 text-red-500" />
         </div>
       </div>
+      
+      {showCamera && (
+         <CameraVision 
+           onClose={() => setShowCamera(false)}
+           onCaptureImage={(img) => {
+             setFileContext({ type: 'image', data: img, name: 'Camera Snapshot' });
+           }}
+           onOCRResult={(text) => {
+             setMessages(prev => [...prev, { id: Date.now().toString(), text: `OCR Scanned Text:\n${text}`, sender: 'ai', timestamp: new Date() }]);
+             handleSend(`Explain or summarize this scanned text: \n\n${text}`);
+           }}
+         />
+      )}
 
       {/* Messages Area */}
       <div
@@ -343,6 +407,13 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
                  <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-black animate-pulse" />
                )}
             </button>
+            <button
+               onClick={() => setShowCamera(true)}
+               disabled={isLoading}
+               className="p-4 rounded-full transition-all hover:bg-white/5 text-slate-400 hover:text-white"
+            >
+               <Camera className="w-5 h-5" />
+            </button>
             <input
               type="text"
               value={input}
@@ -357,6 +428,13 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
               className="p-4 bg-red-600 hover:bg-red-700 rounded-full transition-all text-white shadow-lg shadow-red-600/20 active:scale-95 group disabled:opacity-50"
             >
               <Send className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
+            </button>
+            <button
+               onClick={() => { voiceRef.current?.stopSpeaking(); onTalkingChange?.(false); }}
+               className="p-4 bg-white/5 hover:bg-white/10 rounded-full transition-all text-white/50 hover:text-white ml-2"
+               title="Stop Speech"
+            >
+               <SquareSquare className="w-5 h-5" />
             </button>
           </div>
 
