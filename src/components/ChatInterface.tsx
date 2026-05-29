@@ -2,13 +2,14 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Mic, Cpu, Shield, Sparkles, Paperclip, Download, FileText, Volume2, Camera } from 'lucide-react';
+import { Send, Mic, Cpu, Shield, Sparkles, Paperclip, Download, FileText, Volume2, Camera, RefreshCcw } from 'lucide-react';
 import { VoiceAssistant, getVoiceAssistant } from '@/lib/voice-assistant';
 import dynamic from 'next/dynamic';
 import { SquareSquare } from 'lucide-react'; // For formatting Stop icon
 import CameraVision from './CameraVision';
 
 const DynamicLiveCodeBlock = dynamic(() => import('./LiveCodeBlock'), { ssr: false });
+const DynamicCSVAnalyzer = dynamic(() => import('./CSVAnalyzer'), { ssr: false });
 
 
 interface Message {
@@ -33,15 +34,19 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
   const [isListening, setIsListening] = useState(false);
   const [fileContext, setFileContext] = useState<{type: 'text'|'image', data: string, name: string} | null>(null);
   const [isOnline, setIsOnline] = useState(true);
+  const [offlineMode, setOfflineMode] = useState<'cloud'|'ollama'|'utilities'>('cloud');
   const [showCamera, setShowCamera] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [lastAIResponseId, setLastAIResponseId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const voiceRef = useRef<VoiceAssistant | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setIsOnline(navigator.onLine);
-    const handleOnline = () => setIsOnline(true);
-    const handleOffline = () => setIsOnline(false);
+    setOfflineMode(navigator.onLine ? 'cloud' : 'ollama');
+    const handleOnline = () => { setIsOnline(true); setOfflineMode('cloud'); };
+    const handleOffline = () => { setIsOnline(false); setOfflineMode('ollama'); };
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     return () => {
@@ -63,6 +68,18 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
   const handleSend = async (overrideText?: string) => {
     const text = overrideText || input;
     if (!text.trim() || isLoading) return;
+
+    // Interrupt any current speech
+    voiceRef.current?.stopSpeaking();
+    setIsSpeaking(false);
+    onTalkingChange?.(false);
+
+    if (offlineMode === 'utilities') {
+        const warning: Message = { id: Date.now().toString(), text: "System is in Utilities Mode. Active AI Inference is disabled. You may continue to use OCR, File Viewing, and PDF Generation locally.", sender: 'ai', timestamp: new Date() };
+        setMessages(prev => [...prev, {id: Date.now()+'_u', text, sender: 'user', timestamp: new Date()}, warning]);
+        setInput('');
+        return;
+    }
 
     setIsLoading(true);
     onLoadingChange?.(true);
@@ -104,7 +121,7 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
       let payloadBody: any = { messages: payloadMessages, hasImage: currentFileContext?.type === 'image' };
       let headers: any = { 'Content-Type': 'application/json' };
 
-      if (!isOnline) {
+      if (!isOnline && offlineMode === 'ollama') {
          requestUrl = 'http://localhost:11434/v1/chat/completions';
          payloadBody = { 
            model: 'llama3.2', // default local model
@@ -158,12 +175,23 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
         setMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, text: aiText } : m));
       }
 
+      setLastAIResponseId(aiMsgId);
+
       // Voice Output removed from automation. It is now explicitly triggered by user request.
     } catch (error) {
       console.error(error);
+      
+      let errorText = "Error connecting to Core Intelligence. Please check your network.";
+      
+      // If we were trying to hit Local Ollama and it failed, fallback to Utilities Mode
+      if (!isOnline && offlineMode === 'ollama') {
+         setOfflineMode('utilities');
+         errorText = "Local Provider (Ollama) unreachable. Downgrading to Offline Utilities Mode. Active inference disabled. Modules available: CSV/PDF Parsers, OCR Camera, Offline Docs.";
+      }
+
       const errorMsg: Message = {
-        id: Date.now().toString(),
-        text: "Error connecting to Core Intelligence. Please check your network.",
+        id: `error-${Date.now()}`,
+        text: errorText,
         sender: 'ai',
         timestamp: new Date()
       };
@@ -212,13 +240,24 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
       } else {
          const { parseFileText } = await import('@/lib/file-parser');
          const text = await parseFileText(file);
-         setFileContext({ type: 'text', data: `[CONTENTS OF UPLOADED FILE "${file.name}":\n${text}\n]`, name: file.name });
-         setMessages(prev => [...prev, {
-           id: Date.now().toString(),
-           text: `Successfully analyzed ${file.name}. Ready for your queries.`,
-           sender: 'ai',
-           timestamp: new Date()
-         }]);
+         
+         if (file.name.toLowerCase().endsWith('.csv')) {
+            setFileContext({ type: 'text', data: `[CONTENTS OF CSV FILE "${file.name}":\n${text}\n]`, name: file.name });
+            setMessages(prev => [...prev, {
+              id: Date.now().toString(),
+              text: `Visualizing CSV dataset: ${file.name}\n[CSV_DATA]\n${text}\n[/CSV_DATA]`,
+              sender: 'ai',
+              timestamp: new Date()
+            }]);
+         } else {
+            setFileContext({ type: 'text', data: `[CONTENTS OF UPLOADED FILE "${file.name}":\n${text}\n]`, name: file.name });
+            setMessages(prev => [...prev, {
+              id: Date.now().toString(),
+              text: `Successfully analyzed ${file.name}. Ready for your queries.`,
+              sender: 'ai',
+              timestamp: new Date()
+            }]);
+         }
       }
     } catch (err) {
       console.error(err);
@@ -242,8 +281,8 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
     let hasPdfButton = pdfRegex.test(text);
     let cleanText = text.replace(pdfRegex, '');
 
-    // Split text into normal text, React Code blocks, or Images
-    const parts = cleanText.split(/(```(?:jsx|tsx|react)[\s\S]*?```|\[GENERATE_IMAGE:\s*.*?\])/g);
+    // Split text into normal text, React Code blocks, Images, or CSVs
+    const parts = cleanText.split(/(```(?:jsx|tsx|react)[\s\S]*?```|\[GENERATE_IMAGE:\s*.*?\]|\[CSV_DATA\][\s\S]*?\[\/CSV_DATA\])/g);
 
     let contentBlocks = parts.map((part, index) => {
        if (part.startsWith('```')) {
@@ -260,6 +299,10 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
             </div>
           );
        }
+       if (part.startsWith('[CSV_DATA]')) {
+          const csvContent = part.replace(/^\[CSV_DATA\]\n?/, '').replace(/\n?\[\/CSV_DATA\]$/, '');
+          return <DynamicCSVAnalyzer key={`csv-${index}`} csvData={csvContent} />;
+       }
        return part.trim() ? <p key={`txt-${index}`} className="text-base leading-relaxed whitespace-pre-wrap mb-4">{part}</p> : null;
     });
     
@@ -273,6 +316,19 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
                </button>
                <button onClick={async () => { const { exportToMarkdown } = await import('@/lib/export-utils'); exportToMarkdown(cleanText); }} className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-white/70 rounded-lg text-xs font-black tracking-widest uppercase transition-colors">
                   <FileText className="w-4 h-4" /> Raw txt
+               </button>
+            </div>
+         )}
+         {msgId.startsWith('error-') && (
+            <div className="mt-4 pt-4 border-t border-red-500/20">
+               <button 
+                 onClick={() => {
+                    const lastUserMsg = [...messages].reverse().find(m => m.sender === 'user');
+                    if (lastUserMsg) handleSend(lastUserMsg.text);
+                 }}
+                 className="flex items-center gap-2 px-4 py-2 bg-red-600/20 hover:bg-red-600/40 text-red-400 rounded-lg text-xs font-black tracking-widest uppercase transition-colors"
+               >
+                  <RefreshCcw className="w-4 h-4" /> Re-establish Connection
                </button>
             </div>
          )}
@@ -297,7 +353,11 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
         </div>
         <div className="flex space-x-2">
           {!isOnline ? (
-             <div className="text-[10px] text-orange-500 font-bold animate-pulse px-2 py-1 border border-orange-500/30 bg-orange-900/30 rounded">OFFLINE MODE (OLLAMA LOCAL)</div>
+             offlineMode === 'utilities' ? (
+                 <div className="text-[10px] text-zinc-400 font-bold px-2 py-1 border border-zinc-500/30 bg-zinc-900/30 rounded">OFFLINE UTILITIES MODE</div>
+             ) : (
+                 <div className="text-[10px] text-orange-500 font-bold animate-pulse px-2 py-1 border border-orange-500/30 bg-orange-900/30 rounded">OFFLINE MODE (OLLAMA LOCAL)</div>
+             )
           ) : (
              <div className="text-[10px] text-green-500 font-bold px-2 py-1 border border-green-500/30 bg-green-900/30 rounded flex items-center gap-2"><div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" /> CLOUD UPLINK</div>
           )}
@@ -345,8 +405,26 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
                   {msg.sender === 'ai' ? (
                      <div className="flex items-center space-x-3">
                        <span className="text-[8px] opacity-30 uppercase font-black tracking-widest">Core Logic</span>
-                       <button onClick={() => { onTalkingChange?.(true); voiceRef.current?.speak(msg.text); setTimeout(() => onTalkingChange?.(false), Math.min(msg.text.length * 60, 8000)); }} className="text-white/30 hover:text-white/80 transition-colors">
+                       <button 
+                          onClick={() => { 
+                            if (isSpeaking) {
+                               voiceRef.current?.stopSpeaking();
+                               setIsSpeaking(false);
+                               onTalkingChange?.(false);
+                            } else {
+                               setIsSpeaking(true);
+                               onTalkingChange?.(true); 
+                               voiceRef.current?.speak(msg.text); 
+                               setTimeout(() => {
+                                  setIsSpeaking(false);
+                                  onTalkingChange?.(false);
+                               }, Math.min(msg.text.length * 90, 20000)); 
+                            }
+                          }} 
+                          className={`flex items-center gap-1 px-2 py-1 rounded transition-colors ${isSpeaking ? 'bg-red-500/20 text-red-400' : 'text-white/30 hover:text-white/80'}`}
+                       >
                          <Volume2 className="w-3 h-3" />
+                         {isSpeaking && <span className="text-[7px] font-black uppercase tracking-tighter">Speaking</span>}
                        </button>
                      </div>
                   ) : (
@@ -438,12 +516,23 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
             </button>
           </div>
 
-          <div className="mt-4 flex justify-between px-8 text-[9px] text-white/20 font-black tracking-[0.2em] uppercase">
+          <div className="mt-4 flex justify-between items-center px-8 text-[9px] text-white/20 font-black tracking-[0.2em] uppercase">
             <span>Neural Engine v4.0</span>
-            <span className="flex items-center space-x-2">
-              <Sparkles className="w-2 h-2" />
-              <span>Ready for Command</span>
-            </span>
+            <div className="flex gap-4">
+               {lastAIResponseId && (
+                 <button 
+                   onClick={() => handleSend("Continue your last response precisely where you left off.")}
+                   className="flex items-center gap-1 text-blue-400/50 hover:text-blue-400 transition-colors cursor-pointer"
+                 >
+                   <Sparkles className="w-2 h-2" />
+                   <span>Continue Response</span>
+                 </button>
+               )}
+               <span className="flex items-center space-x-2">
+                 <Sparkles className="w-2 h-2" />
+                 <span>Ready for Command</span>
+               </span>
+            </div>
             <span>Status: Online</span>
           </div>
         </div>

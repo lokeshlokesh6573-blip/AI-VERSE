@@ -54,7 +54,8 @@ class AudioEngine {
     osc.frequency.setValueAtTime(1200, this.ctx.currentTime);
     osc.frequency.exponentialRampToValueAtTime(600, this.ctx.currentTime + 0.05);
 
-    gain.gain.setValueAtTime(0.05, this.ctx.currentTime);
+    gain.gain.setValueAtTime(0, this.ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.05, this.ctx.currentTime + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.05);
 
     osc.connect(gain);

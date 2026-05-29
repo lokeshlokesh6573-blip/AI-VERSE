@@ -73,11 +73,10 @@ export default function RooftopBackground({ performanceMode = 'high' }: RooftopB
     window.addEventListener('resize', handleResize);
 
     const loop = (timestamp: number) => {
-      // 1. Procedural Lightning (plays rare soft rumbling sound)
+      // 1. Procedural Lightning (Visually only, sound removed to prevent glitches)
       if (Math.random() < 0.0015 && !lightningActive && !isLowPower) {
         lightningActive = true;
         lightningTime = timestamp;
-        audio.playThunder();
       }
       if (lightningActive && timestamp - lightningTime > 250) {
         lightningActive = false;
