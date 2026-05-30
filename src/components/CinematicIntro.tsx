@@ -37,7 +37,7 @@ export default function CinematicIntro({ onComplete }: CinematicIntroProps) {
       if (!hasSpoken) {
         const { getVoiceAssistant } = require('@/lib/voice-assistant');
         const voice = getVoiceAssistant();
-        voice.speak("The silence ends here.");
+        voice.speak("AI Verse rangamlo ki digindi.");
         sessionStorage.setItem('ai_verse_greeting_spoken', 'true');
       }
     }, 4500);
