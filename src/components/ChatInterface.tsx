@@ -275,7 +275,7 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
   };
 
   const renderMessageContent = (text: string, msgId: string, sender: 'user' | 'ai') => {
-    if (sender === 'user') return <p className="text-base leading-relaxed whitespace-pre-wrap break-words mb-4">{text}</p>;
+    if (sender === 'user') return <p className="text-base leading-relaxed whitespace-pre-wrap wrap-break-word mb-4">{text}</p>;
 
     const pdfRegex = /\[REQUEST_PDF\]/g;
     let hasPdfButton = pdfRegex.test(text);
@@ -337,7 +337,7 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
   };
 
   return (
-    <div className="flex flex-col h-full w-full max-w-5xl mx-auto pt-16 pb-32 px-4 space-y-6">
+    <div className="flex flex-col h-full w-full max-w-5xl mx-auto pt-16 px-4 space-y-6 overflow-hidden">
       {/* Holographic Header Info (PS5 Style) */}
       <div className="flex justify-between items-center px-4 py-2 border-b border-white/5">
         <div className="flex items-center space-x-4">
@@ -382,7 +382,7 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
       {/* Messages Area */}
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto space-y-6 px-4 py-8 scrollbar-hide"
+        className="flex-1 overflow-y-auto space-y-6 px-4 py-8 pb-48 scrollbar-hide"
       >
         <AnimatePresence>
           {messages.map((msg) => (
