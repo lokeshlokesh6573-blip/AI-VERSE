@@ -453,7 +453,7 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
       </div>
 
       {/* Futuristic Fixed Input Area */}
-      <div className="fixed bottom-0 left-0 w-full p-8 bg-linear-to-t from-black via-black/80 to-transparent z-30">
+      <div className="fixed bottom-0 left-0 w-full p-2 bg-linear-to-t from-black via-black/80 to-transparent z-30">
         <div className="max-w-4xl mx-auto relative">
           <div className="glass rounded-full flex items-center p-2 border border-white/10 shadow-2xl transition-all focus-within:ring-1 focus-within:ring-red-500/50">
             <button
