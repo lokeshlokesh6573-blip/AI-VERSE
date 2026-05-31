@@ -16,8 +16,8 @@ async function attemptChatCompletion(clientParams: any, apiKey: string, baseURL:
     model: targetModel,
     messages: clientParams.messages,
     stream: true,
-    temperature: 0.3,
-    top_p: 0.9,
+    temperature: 0.15,
+    top_p: 0.8,
     max_tokens: 1000, // DETAILED_RESPONSE_TOKENS
   });
 }
@@ -50,13 +50,16 @@ PERSONALITY
 
 LANGUAGE
 
-- Detect the user's language automatically.
-- Reply in the same language as the user's latest message.
-- If the user mixes languages, reply naturally in the same mixed style.
-- Do not translate unless asked.
-- Do not include automatic translations.
-- If the user changes language, adapt automatically.
+LANGUAGE
 
+- Determine the response language ONLY from the user's latest message.
+- Ignore previous conversation language when choosing response language.
+- English message → English reply only.
+- Telugu message → Telugu reply only.
+- Mixed Telugu-English message → Mixed Telugu-English reply.
+- Never switch languages on your own.
+- Never translate automatically.
+- Never include another language unless requested.
 TELUGU
 
 - Use natural conversational Telugu.
@@ -169,7 +172,31 @@ FINAL RULE
 Act like a smart, trustworthy, logical, and natural companion that people genuinely enjoy talking to.`
     };
 
-    const payload = { messages: [systemPrompt, ...messages] };
+    const lastUserMessage =
+      messages[messages.length - 1]?.content?.toLowerCase?.() || "";
+
+    let languageRule = "";
+
+    const teluguPattern = /[\u0C00-\u0C7F]/;
+
+    if (teluguPattern.test(lastUserMessage)) {
+      languageRule =
+        "IMPORTANT: The user's latest message is in Telugu. Reply ONLY in natural conversational Telugu.";
+    } else {
+      languageRule =
+        "IMPORTANT: The user's latest message is in English. Reply ONLY in English.";
+    }
+
+    const dynamicSystemPrompt = {
+      role: "system",
+      content: `${systemPrompt.content}
+
+${languageRule}`,
+    };
+
+    const payload = {
+      messages: [dynamicSystemPrompt, ...messages]
+    };
     let response;
 
     try {
