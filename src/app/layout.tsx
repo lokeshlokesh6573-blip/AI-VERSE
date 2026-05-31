@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Inter, Orbitron } from "next/font/google";
+import { Analytics } from '@vercel/analytics/next';
 import "./globals.css";
 
 const inter = Inter({
@@ -33,6 +34,7 @@ export default function RootLayout({
     <html lang="en" className={`${inter.variable} ${orbitron.variable} dark`}>
       <body className="antialiased bg-black text-white">
         {children}
+        <Analytics />
       </body>
     </html>
   );
