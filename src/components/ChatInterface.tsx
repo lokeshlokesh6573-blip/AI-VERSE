@@ -2,11 +2,15 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Mic, Cpu, Shield, Sparkles, Paperclip, Download, FileText, Volume2, Camera, RefreshCcw } from 'lucide-react';
+import { Send, Mic, Cpu, Shield, Sparkles, Paperclip, Download, FileText, Volume2, Camera, RefreshCcw, Settings } from 'lucide-react';
 import { VoiceAssistant, getVoiceAssistant } from '@/lib/voice-assistant';
+import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase';
+import { Analytics } from '@/lib/analytics';
 import dynamic from 'next/dynamic';
 import { SquareSquare } from 'lucide-react'; // For formatting Stop icon
 import CameraVision from './CameraVision';
+import { useRouter } from 'next/navigation';
 
 const DynamicLiveCodeBlock = dynamic(() => import('./LiveCodeBlock'), { ssr: false });
 const DynamicCSVAnalyzer = dynamic(() => import('./CSVAnalyzer'), { ssr: false });
@@ -41,6 +45,7 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
   const scrollRef = useRef<HTMLDivElement>(null);
   const voiceRef = useRef<VoiceAssistant | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
 
   useEffect(() => {
     setIsOnline(navigator.onLine);
@@ -64,6 +69,81 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
+  const { user, settings } = useAuth();
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+
+  // Fetch or create conversation on load
+  useEffect(() => {
+    const initChat = async () => {
+      if (!user) return;
+
+      // Try to get latest conversation
+      const { data: convs, error } = await supabase
+        .from('conversations')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+
+      if (error) {
+        console.error("Error fetching conversations:", error);
+        return;
+      }
+
+      if (convs && convs.length > 0) {
+        setCurrentConversationId(convs[0].id);
+        // Fetch messages for this conversation
+        const { data: msgs, error: msgsError } = await supabase
+          .from('messages')
+          .select('*')
+          .eq('conversation_id', convs[0].id)
+          .order('created_at', { ascending: true });
+        
+        if (!msgsError && msgs) {
+          setMessages(msgs.map(m => ({
+            id: m.id,
+            text: m.content,
+            sender: m.role as 'user' | 'ai',
+            timestamp: new Date(m.created_at)
+          })));
+        }
+      } else {
+        // Create new conversation
+        const { data: newConv, error: createError } = await supabase
+          .from('conversations')
+          .insert([{ user_id: user.id, title: 'New Conversation' }])
+          .select()
+          .single();
+        
+        if (!createError && newConv) {
+          setCurrentConversationId(newConv.id);
+        }
+      }
+    };
+
+    initChat();
+  }, [user]);
+
+  // Save message to Supabase
+  const saveMessage = async (conversationId: string, role: string, content: string) => {
+    if (!user) return;
+    const { data, error } = await supabase
+      .from('messages')
+      .insert([
+        { conversation_id: conversationId, user_id: user.id, role, content }
+      ])
+      .select()
+      .single();
+    
+    if (!error) {
+      // Update conversation timestamp
+      await supabase
+        .from('conversations')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', conversationId);
+    }
+    return data;
+  };
 
   const handleSend = async (overrideText?: string) => {
     const text = overrideText || input;
@@ -92,6 +172,12 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
 
     setMessages(prev => [...prev, userMsg]);
     setInput('');
+
+    // Save user message and track analytics
+    if (currentConversationId) {
+       saveMessage(currentConversationId, 'user', text);
+       Analytics.chatSent(user?.id);
+    }
 
     try {
       const currentFileContext = fileContext;
@@ -176,6 +262,11 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
       }
 
       setLastAIResponseId(aiMsgId);
+      
+      // Save AI message
+      if (currentConversationId) {
+         saveMessage(currentConversationId, 'assistant', aiText);
+      }
 
       // Voice Output removed from automation. It is now explicitly triggered by user request.
     } catch (error) {
@@ -362,7 +453,14 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
             <div className="text-[10px] text-green-500 font-bold px-2 py-1 border border-green-500/30 bg-green-900/30 rounded flex items-center gap-2"><div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" /> CLOUD UPLINK</div>
           )}
           <Shield className="w-4 h-4 text-blue-500 animate-pulse" />
-          <Cpu className="w-4 h-4 text-red-500" />
+
+          <button
+            onClick={() => router.push('/settings')}
+            className="hover:scale-110 transition-transform"
+            title="Settings"
+          >
+            <Settings className="w-4 h-4 text-red-500 cursor-pointer" />
+          </button>
         </div>
       </div>
 

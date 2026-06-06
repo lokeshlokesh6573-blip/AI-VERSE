@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@codesandbox/sandpack-react": "^2.20.0",
+    "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.2",
     "@types/papaparse": "^5.5.2",
     "@types/three": "^0.184.1",
