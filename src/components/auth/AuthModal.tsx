@@ -69,7 +69,9 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         if (error) throw error;
         setSuccess('Profile created successfully. Welcome to AI Verse.');
       } else if (mode === 'reset') {
-        const { error } = await supabase.auth.resetPasswordForEmail(email);
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+           redirectTo: `${window.location.origin}/auth/reset-password`,
+        });
         if (error) throw error;
         setSuccess('Security reset link sent to your email.');
       }
