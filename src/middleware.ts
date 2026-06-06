@@ -56,19 +56,15 @@ export async function middleware(request: NextRequest) {
 
   const { data: { session } } = await supabase.auth.getSession();
 
-  // Protected routes: '/', '/settings'
-  // Exclude: '/api', '/_next', '/favicon.ico', '/public'
-  const isProtectedRoute = request.nextUrl.pathname === '/' || request.nextUrl.pathname.startsWith('/settings');
-  const isStaticResource = request.nextUrl.pathname.startsWith('/_next') || 
-                           request.nextUrl.pathname.startsWith('/api') ||
-                           request.nextUrl.pathname.includes('.');
+  // Protected routes checking
+  const isSettings = request.nextUrl.pathname.startsWith('/settings');
+  const isAuthed = !!session;
 
-  // If session is null and it's a protected route, we don't necessarily redirect to a login page
-  // because we use a Modal. But for /settings, we might want to redirect to / with a query param
-  if (!session && isProtectedRoute && !isStaticResource) {
-    if (request.nextUrl.pathname.startsWith('/settings')) {
-        return NextResponse.redirect(new URL('/?auth=required', request.url));
-    }
+  if (isSettings && !isAuthed) {
+    const url = request.nextUrl.clone();
+    url.pathname = '/';
+    url.searchParams.set('auth', 'required');
+    return NextResponse.redirect(url);
   }
 
   return response;
