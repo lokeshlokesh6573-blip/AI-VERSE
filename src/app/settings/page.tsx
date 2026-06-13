@@ -84,7 +84,7 @@ export default function SettingsPage() {
 
   if (loading && !settings) {
     return (
-      <div className="min-h-screen bg-black flex items-center justify-center">
+      <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-blue-500 font-orbitron animate-pulse uppercase tracking-[0.3em] font-black text-xs">
            Decrypting System Settings...
         </div>
@@ -100,7 +100,7 @@ export default function SettingsPage() {
   };
 
   return (
-    <main className="min-h-screen bg-black text-white font-sans selection:bg-red-500/30">
+    <main className="min-h-screen bg-background text-foreground font-sans selection:bg-red-500/30 transition-colors duration-300">
       {/* Cinematic Background */}
       <div className="fixed inset-0 z-0 opacity-10">
         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1478760329108-5c3ed9d495a0?q=80&w=2574&auto=format&fit=crop')] bg-cover bg-center grayscale" />

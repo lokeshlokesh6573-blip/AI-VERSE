@@ -23,8 +23,8 @@
 }
 
 :root {
-  --background: #020202;
-  --foreground: #ffffff;
+  --background: #ffffff;
+  --foreground: #020202;
   --primary: #e62429;
   /* Marvel Red */
   --secondary: #00d2ff;
@@ -32,9 +32,15 @@
   --accent: #f0f0f0;
 }
 
+.dark {
+  --background: #020202;
+  --foreground: #ffffff;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
+  transition: background-color 0.3s ease, color 0.3s ease;
   overflow-x: hidden;
   font-family: 'Inter', sans-serif;
   margin: 0;

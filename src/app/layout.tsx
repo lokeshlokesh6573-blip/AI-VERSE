@@ -32,8 +32,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${inter.variable} ${orbitron.variable} dark`}>
-      <body className="antialiased bg-black text-white">
+    <html lang="en" className={`${inter.variable} ${orbitron.variable}`}>
+      <body className="antialiased">
         <AuthProvider>
           {children}
         </AuthProvider>
