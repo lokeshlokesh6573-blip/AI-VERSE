@@ -2,19 +2,21 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Mic, Cpu, Shield, Sparkles, Paperclip, Download, FileText, Volume2, Camera, RefreshCcw, Settings } from 'lucide-react';
+import { Send, Mic, Cpu, Shield, Sparkles, Paperclip, Download, FileText, Volume2, Camera, RefreshCcw, Settings, Menu, X } from 'lucide-react';
 import { VoiceAssistant, getVoiceAssistant } from '@/lib/voice-assistant';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Analytics } from '@/lib/analytics';
 import dynamic from 'next/dynamic';
-import { SquareSquare } from 'lucide-react'; // For formatting Stop icon
+import { SquareSquare } from 'lucide-react'; 
 import CameraVision from './CameraVision';
 import { useRouter } from 'next/navigation';
+import ChatSidebar from './ChatSidebar';
+import SettingsPanel from './settings/SettingsPanel';
+import { createConversation, fetchUserConversations, fetchConversationMessages, saveMessage as saveMessageDB } from '@/lib/supabase';
 
 const DynamicLiveCodeBlock = dynamic(() => import('./LiveCodeBlock'), { ssr: false });
 const DynamicCSVAnalyzer = dynamic(() => import('./CSVAnalyzer'), { ssr: false });
-
 
 interface Message {
   id: string;
@@ -24,12 +26,13 @@ interface Message {
 }
 
 interface ChatInterfaceProps {
-  onLoadingChange?: (loading: boolean) => void;
-  onTalkingChange?: (talking: boolean) => void;
-  onListeningChange?: (listening: boolean) => void;
+  onLoadingChange?: (boolean: boolean) => void;
+  onTalkingChange?: (boolean: boolean) => void;
+  onListeningChange?: (boolean: boolean) => void;
 }
 
 export default function ChatInterface({ onLoadingChange, onTalkingChange, onListeningChange }: ChatInterfaceProps) {
+  const { user, settings } = useAuth();
   const [messages, setMessages] = useState<Message[]>([
     { id: '1', text: "Systems online. How can I assist you today?", sender: 'ai', timestamp: new Date() }
   ]);
@@ -42,6 +45,11 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
   const [showCamera, setShowCamera] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [lastAIResponseId, setLastAIResponseId] = useState<string | null>(null);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<any[]>([]);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  
   const scrollRef = useRef<HTMLDivElement>(null);
   const voiceRef = useRef<VoiceAssistant | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -49,9 +57,8 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
 
   useEffect(() => {
     setIsOnline(navigator.onLine);
-    setOfflineMode(navigator.onLine ? 'cloud' : 'ollama');
-    const handleOnline = () => { setIsOnline(true); setOfflineMode('cloud'); };
-    const handleOffline = () => { setIsOnline(false); setOfflineMode('ollama'); };
+    const handleOnline = () => setIsOnline(true);
+    const handleOffline = () => setIsOnline(false);
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
     return () => {
@@ -69,97 +76,94 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
   }, [messages]);
-  const { user, settings } = useAuth();
-  const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
 
-  // Fetch or create conversation on load
+  // Fetch conversations on load
+  const loadConversations = async () => {
+    if (!user) return;
+    try {
+      const data = await fetchUserConversations(user.id);
+      setConversations(data);
+      if (data.length > 0 && !currentConversationId) {
+        handleSelectConversation(data[0].id);
+      }
+    } catch (err) {
+      console.error("Error loading conversations:", err);
+    }
+  };
+
   useEffect(() => {
-    const initChat = async () => {
-      if (!user) return;
-
-      // Try to get latest conversation
-      const { data: convs, error } = await supabase
-        .from('conversations')
-        .select('*')
-        .eq('user_id', user.id)
-        .order('updated_at', { ascending: false })
-        .limit(1);
-
-      if (error) {
-        console.error("Error fetching conversations:", error);
-        return;
-      }
-
-      if (convs && convs.length > 0) {
-        setCurrentConversationId(convs[0].id);
-        // Fetch messages for this conversation
-        const { data: msgs, error: msgsError } = await supabase
-          .from('messages')
-          .select('*')
-          .eq('conversation_id', convs[0].id)
-          .order('created_at', { ascending: true });
-        
-        if (!msgsError && msgs) {
-          setMessages(msgs.map(m => ({
-            id: m.id,
-            text: m.content,
-            sender: m.role as 'user' | 'ai',
-            timestamp: new Date(m.created_at)
-          })));
-        }
-      } else {
-        // Create new conversation
-        const { data: newConv, error: createError } = await supabase
-          .from('conversations')
-          .insert([{ user_id: user.id, title: 'New Conversation' }])
-          .select()
-          .single();
-        
-        if (!createError && newConv) {
-          setCurrentConversationId(newConv.id);
-        }
-      }
-    };
-
-    initChat();
+    loadConversations();
   }, [user]);
 
-  // Save message to Supabase
+  const handleSelectConversation = async (id: string) => {
+    setCurrentConversationId(id);
+    setIsLoading(true);
+    onLoadingChange?.(true);
+    try {
+      const msgs = await fetchConversationMessages(id);
+      setMessages(msgs.map(m => ({
+        id: m.id,
+        text: m.content,
+        sender: m.role as 'user' | 'ai',
+        timestamp: new Date(m.created_at)
+      })));
+    } catch (err) {
+      console.error("Error loading messages:", err);
+    } finally {
+      setIsLoading(false);
+      onLoadingChange?.(false);
+    }
+  };
+
+  const handleNewChat = async () => {
+    if (!user) return;
+    try {
+      const newConv = await createConversation(user.id);
+      setConversations([newConv, ...conversations]);
+      setCurrentConversationId(newConv.id);
+      setMessages([{ id: '1', text: "Systems online. How can I assist you today?", sender: 'ai', timestamp: new Date() }]);
+    } catch (err) {
+      console.error("Error creating chat:", err);
+    }
+  };
+
+  const handleDeleteChat = async (id: string) => {
+    try {
+      await supabase.from('conversations').delete().eq('id', id);
+      setConversations(prev => prev.filter(c => c.id !== id));
+      if (currentConversationId === id) {
+        setMessages([{ id: '1', text: "Chat deleted. Systems ready for new command.", sender: 'ai', timestamp: new Date() }]);
+        setCurrentConversationId(null);
+      }
+    } catch (err) {
+      console.error("Error deleting chat:", err);
+    }
+  };
+
   const saveMessage = async (conversationId: string, role: string, content: string) => {
     if (!user) return;
-    const { data, error } = await supabase
-      .from('messages')
-      .insert([
-        { conversation_id: conversationId, user_id: user.id, role, content }
-      ])
-      .select()
-      .single();
-    
-    if (!error) {
-      // Update conversation timestamp
-      await supabase
-        .from('conversations')
-        .update({ updated_at: new Date().toISOString() })
-        .eq('id', conversationId);
+    try {
+      await saveMessageDB(conversationId, user.id, role, content);
+      // Update just this conversation updated_at in the local state
+      setConversations(prev => prev.map(c => 
+        c.id === conversationId ? { ...c, updated_at: new Date().toISOString() } : c
+      ).sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()));
+    } catch (err) {
+      console.error("Error saving message:", err);
     }
-    return data;
   };
 
   const handleSend = async (overrideText?: string) => {
     const text = overrideText || input;
     if (!text.trim() || isLoading) return;
 
-    // Interrupt any current speech
+    if (!currentConversationId && user) {
+       await handleNewChat();
+    }
+
     voiceRef.current?.stopSpeaking();
     setIsSpeaking(false);
     onTalkingChange?.(false);
-
-    if (offlineMode === 'utilities') {
-      const warning: Message = { id: Date.now().toString(), text: "System is in Utilities Mode. Active AI Inference is disabled. You may continue to use OCR, File Viewing, and PDF Generation locally.", sender: 'ai', timestamp: new Date() };
-      setMessages(prev => [...prev, { id: Date.now() + '_u', text, sender: 'user', timestamp: new Date() }, warning]);
-      setInput('');
-      return;
-    }
 
     setIsLoading(true);
     onLoadingChange?.(true);
@@ -173,24 +177,28 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
     setMessages(prev => [...prev, userMsg]);
     setInput('');
 
-    // Save user message and track analytics
     if (currentConversationId) {
        saveMessage(currentConversationId, 'user', text);
        Analytics.chatSent(user?.id);
+
+       // Auto-title if it's currently a default title
+       const currentConv = conversations.find(c => c.id === currentConversationId);
+       if (currentConv && (currentConv.title === 'New Conversation' || currentConv.title === '')) {
+         const newTitle = text.slice(0, 30) + (text.length > 30 ? '...' : '');
+         supabase.from('conversations').update({ title: newTitle }).eq('id', currentConversationId).then(() => loadConversations());
+       }
     }
 
     try {
       const currentFileContext = fileContext;
-      if (currentFileContext) setFileContext(null); // consume once
+      if (currentFileContext) setFileContext(null);
 
       const payloadMessages: any[] = [...messages.map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.text }))];
-
       if (currentFileContext) {
         if (currentFileContext.type === 'text') {
           payloadMessages.push({ role: 'system', content: currentFileContext.data });
           payloadMessages.push({ role: 'user', content: text });
         } else {
-          // Vision Model standard multimodal payload
           payloadMessages.push({
             role: 'user',
             content: [
@@ -204,17 +212,14 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
       }
 
       let requestUrl = '/api/chat';
-      let payloadBody: any = { messages: payloadMessages, hasImage: currentFileContext?.type === 'image' };
-      let headers: any = { 'Content-Type': 'application/json' };
+      let payloadBody: any = { 
+        messages: payloadMessages, 
+        hasImage: currentFileContext?.type === 'image',
+        model: settings?.model,
+        response_style: settings?.response_style || 'detailed'
+      };
 
-      if (!isOnline && offlineMode === 'ollama') {
-        requestUrl = 'http://localhost:11434/v1/chat/completions';
-        payloadBody = {
-          model: 'llama3.2', // default local model
-          messages: payloadMessages,
-          stream: true
-        };
-      }
+      let headers: any = { 'Content-Type': 'application/json' };
 
       const response = await fetch(requestUrl, {
         method: 'POST',
@@ -237,52 +242,20 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
       while (true) {
         const { done, value } = await reader!.read();
         if (done) break;
-
         const chunk = decoder.decode(value, { stream: true });
-
-        // Handle Ollama SSE format vs default Next.js Text format
-        if (!isOnline) {
-          const lines = chunk.split('\n').filter(line => line.trim() !== '');
-          for (const line of lines) {
-            if (line === 'data: [DONE]') break;
-            if (line.startsWith('data: ')) {
-              try {
-                const data = JSON.parse(line.slice(6));
-                if (data.choices[0].delta.content) {
-                  aiText += data.choices[0].delta.content;
-                }
-              } catch (e) { }
-            }
-          }
-        } else {
-          aiText += chunk;
-        }
-
+        aiText += chunk;
         setMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, text: aiText } : m));
       }
 
       setLastAIResponseId(aiMsgId);
-      
-      // Save AI message
       if (currentConversationId) {
          saveMessage(currentConversationId, 'assistant', aiText);
       }
-
-      // Voice Output removed from automation. It is now explicitly triggered by user request.
     } catch (error) {
       console.error(error);
-
-      let errorText = "Error connecting to Core Intelligence. Please check your network.";
-
-      // If we were trying to hit Local Ollama and it failed, fallback to Utilities Mode
-      if (!isOnline && offlineMode === 'ollama') {
-        setOfflineMode('utilities');
-        errorText = "Local Provider (Ollama) unreachable. Downgrading to Offline Utilities Mode. Active inference disabled. Modules available: CSV/PDF Parsers, OCR Camera, Offline Docs.";
-      }
-
       const errorMsg: Message = {
         id: `error-${Date.now()}`,
-        text: errorText,
+        text: "Error connecting to Core Intelligence. Please check your network.",
         sender: 'ai',
         timestamp: new Date()
       };
@@ -331,264 +304,116 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
       } else {
         const { parseFileText } = await import('@/lib/file-parser');
         const text = await parseFileText(file);
-
-        if (file.name.toLowerCase().endsWith('.csv')) {
-          setFileContext({ type: 'text', data: `[CONTENTS OF CSV FILE "${file.name}":\n${text}\n]`, name: file.name });
-          setMessages(prev => [...prev, {
-            id: Date.now().toString(),
-            text: `Visualizing CSV dataset: ${file.name}\n[CSV_DATA]\n${text}\n[/CSV_DATA]`,
-            sender: 'ai',
-            timestamp: new Date()
-          }]);
-        } else {
-          setFileContext({ type: 'text', data: `[CONTENTS OF UPLOADED FILE "${file.name}":\n${text}\n]`, name: file.name });
-          setMessages(prev => [...prev, {
-            id: Date.now().toString(),
-            text: `Successfully analyzed ${file.name}. Ready for your queries.`,
-            sender: 'ai',
-            timestamp: new Date()
-          }]);
-        }
+        setFileContext({ type: 'text', data: `[CONTENTS OF UPLOADED FILE "${file.name}":\n${text}\n]`, name: file.name });
+        setMessages(prev => [...prev, { id: Date.now().toString(), text: `Successfully analyzed ${file.name}.`, sender: 'ai', timestamp: new Date() }]);
       }
     } catch (err) {
       console.error(err);
-      setMessages(prev => [...prev, {
-        id: Date.now().toString(),
-        text: `Error analyzing file: ${err instanceof Error ? err.message : 'Unknown format'}.`,
-        sender: 'ai',
-        timestamp: new Date()
-      }]);
     } finally {
       setIsLoading(false);
       onLoadingChange?.(false);
-      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
   const renderMessageContent = (text: string, msgId: string, sender: 'user' | 'ai') => {
-    if (sender === 'user') return <p className="text-base leading-relaxed whitespace-pre-wrap wrap-break-word mb-4">{text}</p>;
-
+    if (sender === 'user') return <p className="text-base leading-relaxed whitespace-pre-wrap mb-4">{text}</p>;
     const pdfRegex = /\[REQUEST_PDF\]/g;
-    let hasPdfButton = pdfRegex.test(text);
     let cleanText = text.replace(pdfRegex, '');
-
-    // Split text into normal text, React Code blocks, Images, or CSVs
     const parts = cleanText.split(/(```(?:jsx|tsx|react)[\s\S]*?```|\[GENERATE_IMAGE:\s*.*?\]|\[CSV_DATA\][\s\S]*?\[\/CSV_DATA\])/g);
-
-    let contentBlocks = parts.map((part, index) => {
-      if (part.startsWith('```')) {
-        const code = part.replace(/```(?:jsx|tsx|react)\n?/, '').replace(/```$/, '').trim();
-        return <DynamicLiveCodeBlock key={`code-${index}`} code={code} />;
-      }
-      if (part.startsWith('[GENERATE_IMAGE:')) {
-        const prompt = part.replace(/\[GENERATE_IMAGE:\s*/, '').replace(/\]$/, '').trim();
-        const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=768&height=432&nologo=true`;
-        return (
-          <div key={`img-${index}`} className="w-full my-4 rounded-xl overflow-hidden shadow-2xl shadow-blue-500/20 border border-white/10 group-hover:border-blue-500/50 transition-colors">
-            <img src={url} alt={prompt} className="w-full h-auto object-cover" />
-            <p className="text-[10px] text-white/50 p-2 text-center uppercase tracking-widest bg-black/50 backdrop-blur-md">Visual Engine Generated</p>
-          </div>
-        );
-      }
-      if (part.startsWith('[CSV_DATA]')) {
-        const csvContent = part.replace(/^\[CSV_DATA\]\n?/, '').replace(/\n?\[\/CSV_DATA\]$/, '');
-        return <DynamicCSVAnalyzer key={`csv-${index}`} csvData={csvContent} />;
-      }
-      return part.trim() ? <p key={`txt-${index}`} className="text-base leading-relaxed whitespace-pre-wrap mb-4">{part}</p> : null;
-    });
 
     return (
       <div id={`exportable-msg-${msgId}`} className="w-full">
-        {contentBlocks}
-        {hasPdfButton && (
-          <div className="flex gap-2 mt-4 pt-4 border-t border-white/10">
-            <button onClick={async () => { const { exportToPDF } = await import('@/lib/export-utils'); exportToPDF(`exportable-msg-${msgId}`); }} className="flex items-center gap-2 px-4 py-2 bg-blue-600/20 hover:bg-blue-600/40 text-blue-300 rounded-lg text-xs font-black tracking-widest uppercase transition-colors">
-              <Download className="w-4 h-4" /> Export Document
-            </button>
-            <button onClick={async () => { const { exportToMarkdown } = await import('@/lib/export-utils'); exportToMarkdown(cleanText); }} className="flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 text-white/70 rounded-lg text-xs font-black tracking-widest uppercase transition-colors">
-              <FileText className="w-4 h-4" /> Raw txt
-            </button>
-          </div>
-        )}
-        {msgId.startsWith('error-') && (
-          <div className="mt-4 pt-4 border-t border-red-500/20">
-            <button
-              onClick={() => {
-                const lastUserMsg = [...messages].reverse().find(m => m.sender === 'user');
-                if (lastUserMsg) handleSend(lastUserMsg.text);
-              }}
-              className="flex items-center gap-2 px-4 py-2 bg-red-600/20 hover:bg-red-600/40 text-red-400 rounded-lg text-xs font-black tracking-widest uppercase transition-colors"
-            >
-              <RefreshCcw className="w-4 h-4" /> Re-establish Connection
-            </button>
-          </div>
-        )}
+        {parts.map((part, index) => {
+          if (part.startsWith('```')) {
+            const code = part.replace(/```(?:jsx|tsx|react)\n?/, '').replace(/```$/, '').trim();
+            return <DynamicLiveCodeBlock key={`code-${index}`} code={code} />;
+          }
+          if (part.startsWith('[GENERATE_IMAGE:')) {
+            const prompt = part.replace(/\[GENERATE_IMAGE:\s*/, '').replace(/\]$/, '').trim();
+            const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=768&height=432&nologo=true`;
+            return <img key={`img-${index}`} src={url} alt={prompt} className="w-full rounded-xl my-4 border border-white/10" />;
+          }
+          if (part.startsWith('[CSV_DATA]')) {
+            const csvContent = part.replace(/^\[CSV_DATA\]\n?/, '').replace(/\n?\[\/CSV_DATA\]$/, '');
+            return <DynamicCSVAnalyzer key={`csv-${index}`} csvData={csvContent} />;
+          }
+          return part.trim() ? <p key={`txt-${index}`} className="text-base leading-relaxed whitespace-pre-wrap mb-4">{part}</p> : null;
+        })}
       </div>
     );
   };
 
   return (
-    <div className="flex flex-col h-full w-full max-w-5xl mx-auto pt-16 px-4 space-y-6 overflow-hidden">
-      {/* Holographic Header Info (PS5 Style) */}
-      <div className="flex justify-between items-center px-4 py-2 border-b border-white/5">
-        <div className="flex items-center space-x-4">
-          <div className="flex flex-col">
-            <span className="text-[10px] text-blue-400 tracking-widest font-black uppercase">Core System</span>
-            <span className="text-sm font-medium text-white/80">AI VERSE v3.1.2</span>
-          </div>
-          <div className="h-8 w-px bg-white/10" />
-          <div className="flex flex-col">
-            <span className="text-[10px] text-red-500 tracking-widest font-black uppercase">Network</span>
-            <span className="text-sm font-medium text-white/80">ENCRYPTED</span>
-          </div>
-        </div>
-        <div className="flex space-x-2">
-          {!isOnline ? (
-            offlineMode === 'utilities' ? (
-              <div className="text-[10px] text-zinc-400 font-bold px-2 py-1 border border-zinc-500/30 bg-zinc-900/30 rounded">OFFLINE UTILITIES MODE</div>
-            ) : (
-              <div className="text-[10px] text-orange-500 font-bold animate-pulse px-2 py-1 border border-orange-500/30 bg-orange-900/30 rounded">OFFLINE MODE (OLLAMA LOCAL)</div>
-            )
-          ) : (
-            <div className="text-[10px] text-green-500 font-bold px-2 py-1 border border-green-500/30 bg-green-900/30 rounded flex items-center gap-2"><div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" /> CLOUD UPLINK</div>
-          )}
-          <Shield className="w-4 h-4 text-blue-500 animate-pulse" />
-
-          <button
-            onClick={() => router.push('/settings')}
-            className="hover:scale-110 transition-transform"
-            title="Settings"
+    <div className="flex h-full w-full bg-black">
+      <AnimatePresence>
+        {isSidebarOpen && (
+          <motion.div
+            initial={{ width: 0, opacity: 0 }}
+            animate={{ width: 288, opacity: 1 }}
+            exit={{ width: 0, opacity: 0 }}
+            className="hidden md:block shrink-0"
           >
-            <Settings className="w-4 h-4 text-red-500 cursor-pointer" />
-          </button>
+            <ChatSidebar 
+              conversations={conversations} 
+              activeId={currentConversationId} 
+              onSelect={handleSelectConversation} 
+              onNew={handleNewChat} 
+              onDelete={handleDeleteChat} 
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <div className="flex-1 flex flex-col relative overflow-hidden h-full">
+        <div className="absolute top-4 left-4 z-50 md:hidden">
+            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 glass rounded-full">
+                {isSidebarOpen ? <X /> : <Menu />}
+            </button>
         </div>
-      </div>
 
-      {showCamera && (
-        <CameraVision
-          onClose={() => setShowCamera(false)}
-          onCaptureImage={(img) => {
-            setFileContext({ type: 'image', data: img, name: 'Camera Snapshot' });
-          }}
-          onOCRResult={(text) => {
-            setMessages(prev => [...prev, { id: Date.now().toString(), text: `OCR Scanned Text:\n${text}`, sender: 'ai', timestamp: new Date() }]);
-            handleSend(`Explain or summarize this scanned text: \n\n${text}`);
-          }}
-        />
-      )}
+        <div className="flex-1 flex flex-col h-full w-full max-w-5xl mx-auto pt-16 px-4 space-y-6 overflow-hidden pb-32">
+          {/* Holographic Header */}
+          <div className="flex justify-between items-center px-4 py-2 border-b border-white/5">
+            <div className="flex items-center space-x-4 font-orbitron">
+              <span className="text-[10px] text-blue-400 font-black uppercase">Core System</span>
+              <div className="h-8 w-px bg-white/10" />
+              <span className="text-sm font-medium text-white/80">AI VERSE v3.1.2</span>
+            </div>
+            <div className="flex space-x-4 items-center">
+              <div className="text-[10px] text-green-500 font-bold px-2 py-1 border border-green-500/30 bg-green-900/30 rounded flex items-center gap-2">
+                <div className="w-1.5 h-1.5 bg-green-500 rounded-full animate-pulse" /> CLOUD UPLINK
+              </div>
+              <button onClick={() => setIsSettingsOpen(true)} className="hover:scale-110 transition-transform">
+                <Settings className="w-4 h-4 text-red-500 cursor-pointer" />
+              </button>
+            </div>
+          </div>
 
-      {/* Messages Area */}
-      <div
-        ref={scrollRef}
-        className="flex-1 overflow-y-auto space-y-6 px-4 py-8 pb-48 scrollbar-hide"
-      >
-        <AnimatePresence>
-          {messages.map((msg) => (
-            <motion.div
-              key={msg.id}
-              initial={{ opacity: 0, x: msg.sender === 'user' ? 50 : -50, scale: 0.95 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
-            >
-              <div className={`max-w-[80%] rounded-2xl p-4 relative group ${msg.sender === 'user'
-                ? 'glass-crimson text-white rounded-tr-none'
-                : 'glass text-white/90 rounded-tl-none border-blue-500/20'
-                }`}>
-                {/* Visual Flair */}
-                <div className={`absolute top-0 ${msg.sender === 'user' ? 'right-0' : 'left-0'} w-1 h-full rounded-full ${msg.sender === 'user' ? 'bg-red-600' : 'bg-blue-600'
-                  }`} />
+          <SettingsPanel isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
 
-                {renderMessageContent(msg.text, msg.id, msg.sender)}
-                <div className="mt-2 flex items-center justify-between">
-                  {msg.sender === 'ai' ? (
-                    <div className="flex items-center space-x-3">
-                      <span className="text-[8px] opacity-30 uppercase font-black tracking-widest">Core Logic</span>
-                      <button
-                        onClick={() => {
-                          if (isSpeaking) {
-                            voiceRef.current?.stopSpeaking();
-                            setIsSpeaking(false);
-                            onTalkingChange?.(false);
-                          } else {
-                            setIsSpeaking(true);
-                            onTalkingChange?.(true);
-                            voiceRef.current?.speak(msg.text);
-                            setTimeout(() => {
-                              setIsSpeaking(false);
-                              onTalkingChange?.(false);
-                            }, Math.min(msg.text.length * 90, 20000));
-                          }
-                        }}
-                        className={`flex items-center gap-1 px-2 py-1 rounded transition-colors ${isSpeaking ? 'bg-red-500/20 text-red-400' : 'text-white/30 hover:text-white/80'}`}
-                      >
-                        <Volume2 className="w-3 h-3" />
-                        {isSpeaking && <span className="text-[7px] font-black uppercase tracking-tighter">Speaking</span>}
-                      </button>
-                    </div>
-                  ) : (
-                    <span className="text-[8px] opacity-30 uppercase font-black tracking-widest">
-                      Direct Input
-                    </span>
-                  )}
-                  <span className="text-[8px] opacity-30">
-                    {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </span>
+          <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-6 px-4 py-8 scrollbar-hide">
+            {messages.map((msg) => (
+              <motion.div key={msg.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
+                <div className={`max-w-[80%] rounded-2xl p-4 relative glass ${msg.sender === 'user' ? 'border-red-500/20' : 'border-blue-500/20'}`}>
+                  <div className={`absolute top-0 ${msg.sender === 'user' ? 'right-0' : 'left-0'} w-1 h-full rounded-full ${msg.sender === 'user' ? 'bg-red-600' : 'bg-blue-600'}`} />
+                  {renderMessageContent(msg.text, msg.id, msg.sender)}
+                  <p className="text-[8px] opacity-30 mt-2 text-right">{msg.timestamp.toLocaleTimeString()}</p>
                 </div>
-              </div>
-            </motion.div>
-          ))}
-          {isLoading && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex justify-start">
-              <div className="glass p-4 rounded-2xl rounded-tl-none text-blue-400 text-xs tracking-widest font-black flex items-center space-x-2">
-                <div className="w-1 h-1 bg-blue-500 animate-bounce" />
-                <div className="w-1 h-1 bg-blue-500 animate-bounce [animation-delay:0.2s]" />
-                <div className="w-1 h-1 bg-blue-500 animate-bounce [animation-delay:0.4s]" />
-                <span>CORE PROCESSING</span>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
+              </motion.div>
+            ))}
+            {isLoading && <div className="text-blue-400 text-[10px] tracking-widest font-black animate-pulse">CORE PROCESSING...</div>}
+          </div>
+        </div>
 
-      {/* Futuristic Fixed Input Area */}
-      <div className="fixed bottom-0 left-0 w-full p-2 bg-linear-to-t from-black via-black/80 to-transparent z-30">
-        <div className="max-w-4xl mx-auto relative">
-          <div className="glass rounded-full flex items-center p-2 border border-white/10 shadow-2xl transition-all focus-within:ring-1 focus-within:ring-red-500/50">
-            <button
-              onClick={startVoice}
-              className={`p-4 rounded-full transition-all ${isListening ? 'bg-red-600 animate-pulse' : 'hover:bg-white/5'}`}
-            >
+        {/* Input Bar */}
+        <div className="absolute bottom-0 left-0 w-full p-4 bg-linear-to-t from-black via-black/80 to-transparent z-30">
+          <div className="max-w-4xl mx-auto glass rounded-full flex items-center p-2 border border-white/10 shadow-2xl">
+            <button onClick={startVoice} className={`p-4 rounded-full transition-all ${isListening ? 'bg-red-600 animate-pulse' : 'hover:bg-white/5'}`}>
               <Mic className={`w-6 h-6 ${isListening ? 'text-white' : 'text-blue-400'}`} />
-              {isListening && (
-                <div className="absolute -top-12 left-1/2 -translate-x-1/2 flex items-center space-x-1">
-                  {[1, 2, 3, 4, 5].map(i => (
-                    <motion.div
-                      key={i}
-                      animate={{ height: [8, 20, 8] }}
-                      transition={{ repeat: Infinity, duration: 0.5, delay: i * 0.1 }}
-                      className="w-1 bg-red-500 rounded-full"
-                    />
-                  ))}
-                </div>
-              )}
             </button>
             <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} accept="image/*,.pdf,.docx,.txt,.csv,.json,.md" />
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="p-4 rounded-full transition-all hover:bg-white/5 text-slate-400 hover:text-white relative"
-              disabled={isLoading}
-            >
-              <Paperclip className="w-5 h-5" />
-              {fileContext?.type === 'image' && (
-                <div className="absolute -top-1 -right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-black animate-pulse" />
-              )}
-            </button>
-            <button
-              onClick={() => setShowCamera(true)}
-              disabled={isLoading}
-              className="p-4 rounded-full transition-all hover:bg-white/5 text-slate-400 hover:text-white"
-            >
-              <Camera className="w-5 h-5" />
+            <button onClick={() => fileInputRef.current?.click()} className="p-4 rounded-full hover:bg-white/5 text-slate-400">
+               <Paperclip className="w-5 h-5" />
             </button>
             <input
               type="text"
@@ -596,46 +421,14 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}
               placeholder="Query Core Intelligence..."
-              className="flex-1 bg-transparent border-none outline-none px-4 text-white placeholder:text-white/20 font-light tracking-wide"
+              className="flex-1 bg-transparent border-none outline-none px-4 text-white placeholder:text-white/20 font-orbitron text-sm"
             />
-            <button
-              onClick={() => handleSend()}
-              disabled={isLoading}
-              className="p-4 bg-red-600 hover:bg-red-700 rounded-full transition-all text-white shadow-lg shadow-red-600/20 active:scale-95 group disabled:opacity-50"
-            >
-              <Send className="w-6 h-6 group-hover:translate-x-1 transition-transform" />
+            <button onClick={() => handleSend()} disabled={isLoading} className="p-4 bg-red-600 hover:bg-red-700 rounded-full transition-all text-white shadow-lg active:scale-95 disabled:opacity-50">
+               <Send className="w-6 h-6" />
             </button>
-            <button
-              onClick={() => { voiceRef.current?.stopSpeaking(); onTalkingChange?.(false); }}
-              className="p-4 bg-white/5 hover:bg-white/10 rounded-full transition-all text-white/50 hover:text-white ml-2"
-              title="Stop Speech"
-            >
-              <SquareSquare className="w-5 h-5" />
-            </button>
-          </div>
-
-          <div className="mt-4 flex justify-between items-center px-8 text-[9px] text-white/20 font-black tracking-[0.2em] uppercase">
-            <span>Neural Engine v4.0</span>
-            <div className="flex gap-4">
-              {lastAIResponseId && (
-                <button
-                  onClick={() => handleSend("Continue your last response precisely where you left off.")}
-                  className="flex items-center gap-1 text-blue-400/50 hover:text-blue-400 transition-colors cursor-pointer"
-                >
-                  <Sparkles className="w-2 h-2" />
-                  <span>Continue Response</span>
-                </button>
-              )}
-              <span className="flex items-center space-x-2">
-                <Sparkles className="w-2 h-2" />
-                <span>Ready for Command</span>
-              </span>
-            </div>
-            <span>Status: Online</span>
           </div>
         </div>
       </div>
     </div>
   );
 }
-

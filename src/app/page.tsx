@@ -1,21 +1,31 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import CinematicIntro from '@/components/CinematicIntro';
 import ChatInterface from '@/components/ChatInterface';
 import SpiderMascot from '@/components/SpiderMascot';
 import AuthModal from '@/components/auth/AuthModal';
 import { useAuth } from '@/context/AuthContext';
+import { useSearchParams } from 'next/navigation';
 import { AnimatePresence, motion } from 'framer-motion';
 import { Lock, ShieldAlert } from 'lucide-react';
 
-export default function Home() {
+function HomeContent() {
   const { user, loading } = useAuth();
+  const searchParams = useSearchParams();
   const [showIntro, setShowIntro] = useState(true);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isAiThinking, setIsAiThinking] = useState(false);
   const [isAiTalking, setIsAiTalking] = useState(false);
   const [isAiListening, setIsAiListening] = useState(false);
+
+  // Check for auth requirement in URL
+  useEffect(() => {
+    if (searchParams.get('auth') === 'required') {
+      setShowIntro(false);
+      setIsAuthModalOpen(true);
+    }
+  }, [searchParams]);
 
   // Open auth modal if user is not logged in and intro is done
   useEffect(() => {
@@ -23,6 +33,7 @@ export default function Home() {
       setIsAuthModalOpen(true);
     }
   }, [user, loading, showIntro]);
+
 
   return (
     <main className="relative min-h-screen bg-black overflow-hidden font-sans">
@@ -52,11 +63,13 @@ export default function Home() {
             {/* Main Chat Layout or Auth Gate */}
             <div className="relative z-10 h-screen">
                {user ? (
-                 <ChatInterface
-                   onLoadingChange={setIsAiThinking}
-                   onTalkingChange={setIsAiTalking}
-                   onListeningChange={setIsAiListening}
-                 />
+                 <div className="flex h-full w-full overflow-hidden">
+                   <ChatInterface
+                     onLoadingChange={setIsAiThinking}
+                     onTalkingChange={setIsAiTalking}
+                     onListeningChange={setIsAiListening}
+                   />
+                 </div>
                ) : (
                  <div className="h-full flex flex-col items-center justify-center p-6 text-center">
                     <div className="w-20 h-20 bg-zinc-900 border border-white/10 rounded-3xl flex items-center justify-center mb-6 shadow-2xl">
@@ -101,5 +114,19 @@ export default function Home() {
         )}
       </AnimatePresence>
     </main>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={
+       <div className="min-h-screen bg-black flex items-center justify-center">
+          <div className="text-red-600 font-orbitron animate-pulse uppercase tracking-[0.3em] font-black text-xs">
+             Loading OS...
+          </div>
+       </div>
+    }>
+      <HomeContent />
+    </Suspense>
   );
 }

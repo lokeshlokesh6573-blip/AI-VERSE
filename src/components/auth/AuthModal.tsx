@@ -41,8 +41,9 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
     if (msg.includes('Email already registered')) return 'Email already registered.';
     if (msg.includes('Invalid login credentials')) return 'Incorrect email or password.';
     if (msg.includes('user_already_exists')) return 'User already exists.';
-    if (msg.includes('Invalid path')) return 'System update in progress. Please try again.';
-    return 'Unable to complete request. Please try again.';
+    if (msg.includes('Invalid path')) return 'Redirect URL not allowed. Please check Supabase Auth settings.';
+    if (msg.includes('Password should be')) return 'Password requirement not met.';
+    return msg || 'Unable to complete request. Please try again.';
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -58,8 +59,10 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         onClose();
+        window.location.reload(); 
       } else if (mode === 'signup') {
-        const { error } = await supabase.auth.signUp({
+        // Omitting emailRedirectTo lets Supabase use the default Site URL
+        const { error, data } = await supabase.auth.signUp({
           email,
           password,
           options: {
@@ -67,10 +70,19 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
           },
         });
         if (error) throw error;
-        setSuccess('Profile created successfully. Welcome to AI Verse.');
+        
+        if (data?.session) {
+           setSuccess('Profile created successfully. Welcome to AI Verse.');
+           setTimeout(() => {
+             onClose();
+             window.location.reload();
+           }, 2000);
+        } else {
+           setSuccess('Security verification link sent to your email.');
+        }
       } else if (mode === 'reset') {
         const { error } = await supabase.auth.resetPasswordForEmail(email, {
-           redirectTo: `${window.location.origin}/auth/reset-password`,
+           redirectTo: `${window.location.origin}/auth/callback`,
         });
         if (error) throw error;
         setSuccess('Security reset link sent to your email.');

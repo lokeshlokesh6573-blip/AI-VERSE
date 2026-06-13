@@ -26,7 +26,7 @@ import { supabase } from '@/lib/supabase';
 
 export default function SettingsPage() {
   const router = useRouter();
-  const { profile, settings, updateSettings, signOut, user } = useAuth();
+  const { profile, settings, updateSettings, signOut, user, loading } = useAuth();
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
 
@@ -80,7 +80,23 @@ export default function SettingsPage() {
   const deleteAccount = async () => {
      if (!confirm('CRITICAL ACTION: This will permanently delete your account and all associated data. Continue?')) return;
      alert('Account deletion request sent to administrative override.');
-     // In a real app, you would call a Supabase Edge Function to delete the user
+  };
+
+  if (loading && !settings) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="text-blue-500 font-orbitron animate-pulse uppercase tracking-[0.3em] font-black text-xs">
+           Decrypting System Settings...
+        </div>
+      </div>
+    );
+  }
+
+  // Fallback settings object to handle initial loading lag
+  const displaySettings = settings || {
+    theme: 'dark',
+    language: 'en',
+    response_style: 'detailed'
   };
 
   return (
@@ -107,7 +123,6 @@ export default function SettingsPage() {
             </div>
           </div>
 
-          {/* Save Status Indicator */}
           <AnimatePresence>
             {saveStatus !== 'idle' && (
               <motion.div 
@@ -126,10 +141,8 @@ export default function SettingsPage() {
           </AnimatePresence>
         </div>
 
-        {/* Content */}
         <div className="space-y-12 pb-24">
           
-          {/* Appearance */}
           <SettingsSection 
             title="Appearance" 
             description="Visual Interface Configuration"
@@ -138,7 +151,7 @@ export default function SettingsPage() {
             <SettingsCard 
               title="Color Theme" 
               description="Switch between Light and Dark interface modes."
-              icon={settings?.theme === 'dark' ? Moon : Sun}
+              icon={displaySettings.theme === 'dark' ? Moon : Sun}
             >
               <div className="flex gap-2">
                 {['dark', 'light'].map((t) => (
@@ -147,7 +160,7 @@ export default function SettingsPage() {
                     onClick={() => handleUpdate({ theme: t })}
                     className={cn(
                       "flex-1 py-2 px-3 rounded-lg text-xs font-bold uppercase tracking-widest transition-all",
-                      settings?.theme === t 
+                      displaySettings.theme === t 
                         ? "bg-red-600 text-white shadow-lg shadow-red-900/40" 
                         : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:text-white"
                     )}
@@ -164,7 +177,7 @@ export default function SettingsPage() {
               icon={Languages}
             >
               <select 
-                value={settings?.language}
+                value={displaySettings.language || 'en'}
                 onChange={(e) => handleUpdate({ language: e.target.value })}
                 className="w-full bg-zinc-800/50 border border-white/5 rounded-lg py-2 px-3 text-sm focus:outline-none focus:border-red-500/50 text-zinc-300"
               >
@@ -175,7 +188,6 @@ export default function SettingsPage() {
             </SettingsCard>
           </SettingsSection>
 
-          {/* Chat Settings */}
           <SettingsSection 
             title="Intelligence" 
             description="AI Interaction Protocols"
@@ -196,7 +208,7 @@ export default function SettingsPage() {
                     onClick={() => handleUpdate({ response_style: s.id })}
                     className={cn(
                       "flex-1 py-2 px-3 rounded-lg text-xs font-bold uppercase tracking-widest transition-all",
-                      settings?.response_style === s.id 
+                      displaySettings.response_style === s.id 
                         ? "bg-blue-600 text-white shadow-lg shadow-blue-900/40" 
                         : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-800 hover:text-white"
                     )}
@@ -222,7 +234,6 @@ export default function SettingsPage() {
             </SettingsCard>
           </SettingsSection>
 
-          {/* Account */}
           <SettingsSection 
             title="Profile" 
             description="Agent & Authentication Stats"
@@ -275,11 +286,9 @@ export default function SettingsPage() {
               </button>
             </SettingsCard>
           </SettingsSection>
-
         </div>
       </div>
 
-      {/* Footer HUD line */}
       <div className="fixed bottom-0 left-0 w-full h-1 bg-linear-to-r from-transparent via-red-500/50 to-transparent opacity-20" />
     </main>
   );

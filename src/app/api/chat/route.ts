@@ -4,7 +4,7 @@ import { NextResponse } from 'next/server';
 export const runtime = 'edge';
 
 // Fallback logic wrapper
-async function attemptChatCompletion(clientParams: any, apiKey: string, baseURL: string, model: string, isVision: boolean) {
+async function attemptChatCompletion(clientParams: any, apiKey: string, baseURL: string, model: string, isVision: boolean, maxTokens: number) {
   const ai = new OpenAI({ apiKey, baseURL });
 
   // Use appropriate model for OpenRouter vs Groq
@@ -18,13 +18,13 @@ async function attemptChatCompletion(clientParams: any, apiKey: string, baseURL:
     stream: true,
     temperature: 0.15,
     top_p: 0.8,
-    max_tokens: 1000, // DETAILED_RESPONSE_TOKENS
+    max_tokens: maxTokens,
   });
 }
 
 export async function POST(req: Request) {
   try {
-    const { messages, apiKey: clientApiKey, model: clientModel, hasImage } = await req.json();
+    const { messages, apiKey: clientApiKey, model: clientModel, hasImage, response_style } = await req.json();
 
     const groqKey = clientApiKey || process.env.GROQ_API_KEY;
     const openRouterKey = process.env.OPENROUTER_API_KEY;
@@ -33,10 +33,18 @@ export async function POST(req: Request) {
     const defaultModel = hasImage ? 'llama-3.2-11b-vision-preview' : 'llama-3.3-70b-versatile';
     const model = clientModel || defaultModel;
 
+    // Response style instruction
+    const styleInstruction = response_style === 'short' 
+      ? "Be extremely concise and brief. Avoid long explanations unless specifically asked." 
+      : "Provide detailed, comprehensive explanations and deep insights.";
+
+    const maxTokens = response_style === 'short' ? 400 : 2000;
+
     // System Prompt for exactly how it should behave
     const systemPrompt = {
       role: "system",
       content: `You are AI Verse, an intelligent AI assistant created and developed by Lokesh.
+${styleInstruction}
 
 PERSONALITY
 
@@ -234,7 +242,7 @@ ${languageRule}`,
         throw new Error("GROQ_API_KEY_MISSING");
       }
       // Attempt Groq Primary
-      response = await attemptChatCompletion(payload, groqKey, 'https://api.groq.com/openai/v1', model, hasImage);
+      response = await attemptChatCompletion(payload, groqKey, 'https://api.groq.com/openai/v1', model, hasImage, maxTokens);
     } catch (groqError: any) {
       console.warn("Groq attempt failed, falling back to OpenRouter...", groqError?.message);
 
@@ -242,34 +250,34 @@ ${languageRule}`,
         if (!openRouterKey || openRouterKey === 'placeholder' || openRouterKey.trim() === '') {
           throw new Error("OPENROUTER_API_KEY_MISSING");
         }
-        // Attempt OpenRouter Fallback
-        response = await attemptChatCompletion(payload, openRouterKey, 'https://openrouter.ai/api/v1', model, hasImage);
+      // Attempt OpenRouter Fallback
+        response = await attemptChatCompletion(payload, openRouterKey, 'https://openrouter.ai/api/v1', model, hasImage, maxTokens);
       } catch (orError: any) {
         console.error("OpenRouter fallback failed.", orError?.message);
-        // If both cloud providers fail, we send a specific error which the client can use to trigger Ollama offline mode
         return NextResponse.json({
-          error: 'CLOUD_PROVIDERS_UNAVAILABLE',
-          message: 'Error connecting to Core Intelligence. Cloud services unavailable.'
+          error: 'SERVICE_UNAVAILABLE',
+          message: 'Both Groq and OpenRouter services are currently unavailable. Please try again later.'
         }, { status: 503 });
       }
     }
 
-    // Create a ReadableStream for the response
+    if (!response) {
+       return NextResponse.json({ error: 'No response from AI providers' }, { status: 500 });
+    }
+
     const stream = new ReadableStream({
       async start(controller) {
+        const encoder = new TextEncoder();
         try {
-          if (!response) {
-            controller.close();
-            return;
-          }
-          for await (const chunk of response) {
+          for await (const chunk of response as any) {
             const content = chunk.choices[0]?.delta?.content || '';
             if (content) {
-              controller.enqueue(new TextEncoder().encode(content));
+              controller.enqueue(encoder.encode(content));
             }
           }
-        } catch (streamErr) {
-          console.error("Stream interrupted:", streamErr);
+        } catch (err) {
+          console.error("Streaming error:", err);
+          controller.error(err);
         } finally {
           controller.close();
         }
@@ -278,14 +286,17 @@ ${languageRule}`,
 
     return new Response(stream, {
       headers: {
-        'Content-Type': 'text/event-stream',
-        'Cache-Control': 'no-cache',
+        'Content-Type': 'text/plain; charset=utf-8',
+        'Cache-Control': 'no-cache, no-transform',
         'Connection': 'keep-alive',
-      }
+      },
     });
 
   } catch (error: any) {
-    console.error('AI Route Error:', error);
-    return NextResponse.json({ error: 'System overload. Check API configuration.' }, { status: 500 });
+    console.error('CRITICAL_API_ERROR:', error);
+    return NextResponse.json({ 
+      error: 'INTERNAL_SERVER_ERROR', 
+      message: error.message || 'An unexpected error occurred.' 
+    }, { status: 500 });
   }
 }

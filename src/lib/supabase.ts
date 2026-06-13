@@ -1,55 +1,85 @@
 import { createClient } from '@supabase/supabase-js';
 
-// These can be safely exposed to the client in Next.js via NEXT_PUBLIC prefix.
-// The user will need to add these to their .env file.
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder-url.supabase.co';
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
+
+if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+  console.warn("Supabase credentials missing. Using placeholders for build stability.");
+}
 
 export const supabase = createClient(supabaseUrl, supabaseKey);
 
 /**
  * DB Table schema recommendation:
- * Table: `ai_verse_chats`
- * Columns:
- * - id (uuid, pk)
- * - created_at (timestamptz)
- * - user_id (string/uuid, optional for auth)
- * - title (string)
- * - messages (jsonb) - stores the array of user/ai messages
+ * - profiles (id, username, email, avatar_url, role, plan)
+ * - user_settings (id, user_id, theme, language, response_style)
+ * - conversations (id, user_id, title, updated_at, created_at)
+ * - messages (id, conversation_id, user_id, role, content, created_at)
  */
 
-// Example utility to save a chat
-export async function saveChatSession(title: string, messages: any[]) {
-    // If not configured, just return silently for local testing
-    if (supabaseUrl.includes('placeholder')) return null;
-
+// Utility to create a new conversation
+export async function createConversation(userId: string, title: string = 'New Conversation') {
     const { data, error } = await supabase
-        .from('ai_verse_chats')
-        .insert([
-            { title, messages, created_at: new Date().toISOString() }
-        ])
-        .select();
+        .from('conversations')
+        .insert([{ user_id: userId, title }])
+        .select()
+        .single();
         
     if (error) {
-        console.error("Supabase Save Error:", error);
+        console.error("Supabase Create Conversation Error:", error);
         throw error;
     }
-    
     return data;
 }
 
-export async function fetchSavedChats() {
-    if (supabaseUrl.includes('placeholder')) return [];
-
+// Utility to save a message
+export async function saveMessage(conversationId: string, userId: string, role: string, content: string) {
     const { data, error } = await supabase
-        .from('ai_verse_chats')
-        .select('*')
-        .order('created_at', { ascending: false });
-
+        .from('messages')
+        .insert([{ conversation_id: conversationId, user_id: userId, role, content }])
+        .select()
+        .single();
+        
     if (error) {
-        console.error("Supabase Fetch Error:", error);
+        console.error("Supabase Save Message Error:", error);
         throw error;
     }
 
+    // Update conversation's updated_at timestamp
+    await supabase
+        .from('conversations')
+        .update({ updated_at: new Date().toISOString() })
+        .eq('id', conversationId);
+
+    return data;
+}
+
+// Utility to fetch all conversations for a user
+export async function fetchUserConversations(userId: string) {
+    const { data, error } = await supabase
+        .from('conversations')
+        .select('*')
+        .eq('user_id', userId)
+        .order('updated_at', { ascending: false });
+
+    if (error) {
+        console.error("Supabase Fetch Conversations Error:", error);
+        throw error;
+    }
+    return data;
+}
+
+// Utility to fetch messages for a conversation
+export async function fetchConversationMessages(conversationId: string) {
+    const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversationId)
+        .order('created_at', { ascending: true });
+
+    if (error) {
+        console.error("Supabase Fetch Messages Error:", error);
+        throw error;
+    }
     return data;
 }
