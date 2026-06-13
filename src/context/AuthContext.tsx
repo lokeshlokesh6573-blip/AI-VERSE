@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { supabase } from '@/lib/supabase';
 import { User, Session } from '@supabase/supabase-js';
 
@@ -47,6 +47,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const fetchingUserId = useRef<string | null>(null);
+
   useEffect(() => {
     // Initial sync from localStorage to prevent flash
     const saved = localStorage.getItem('user_settings');
@@ -61,35 +63,46 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
     }
 
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      if (session?.user) {
-        fetchUserData(session.user.id);
-      } else {
-        setLoading(false);
-      }
-    });
+    // Consolidate auth state handling
+    let isInitialized = false;
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      console.log("[Auth] State change:", event, session?.user?.id);
+      
       setSession(session);
       setUser(session?.user ?? null);
-      
+
       if (session?.user) {
         await fetchUserData(session.user.id);
       } else {
         setProfile(null);
         setSettings(null);
-        setLoading(false);
+        if (event === 'INITIAL_SESSION' || event === 'SIGNED_OUT' || !session) {
+          setLoading(false);
+        }
       }
+      
+      isInitialized = true;
     });
 
-    return () => subscription.unsubscribe();
+    const timeout = setTimeout(() => {
+      if (!isInitialized) {
+        console.warn("[Auth] Initialization timeout reached. Forcing loading false.");
+        setLoading(false);
+      }
+    }, 5000);
+
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
   }, []);
 
   const fetchUserData = async (userId: string) => {
+    if (fetchingUserId.current === userId) return;
+    fetchingUserId.current = userId;
+
+    console.log("[Auth] fetchUserData started for:", userId);
     try {
       // Fetch profile
       let { data: profileData, error: profileError } = await supabase
@@ -99,13 +112,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         .single();
       
       if (profileError && profileError.code === 'PGRST116') {
-        const { data: currentUser } = await supabase.auth.getUser();
-        // Record not found, create default profile
+        console.log("[Auth] Profile not found, creating default...");
+        const { data: userData } = await supabase.auth.getUser();
         const { data: newProfile, error: createError } = await supabase
           .from('profiles')
-          .insert([{ id: userId, email: currentUser.user?.email }])
+          .insert([{ id: userId, email: userData.user?.email || '' }])
           .select()
           .single();
+          
         if (!createError) profileData = newProfile;
       }
       setProfile(profileData);
@@ -118,7 +132,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         .single();
       
       if (settingsError && settingsError.code === 'PGRST116') {
-        // Create default settings if not exists
+        console.log("[Auth] Settings not found, creating default...");
         const { data: newSettings, error: createError } = await supabase
           .from('user_settings')
           .insert([{ 
@@ -148,10 +162,10 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       } else {
          document.documentElement.classList.remove('dark');
       }
-
     } catch (error) {
-      console.error('Error fetching user data:', error);
+      console.error('[Auth] fetchUserData error:', error);
     } finally {
+      fetchingUserId.current = null;
       setLoading(false);
     }
   };
@@ -163,8 +177,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
   const updateSettings = async (newSettings: Partial<UserSettings>) => {
     if (!user) return;
-
-    // Optimistic update
     const currentSettings = settings || {
       theme: 'dark',
       language: 'en',
@@ -181,24 +193,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
 
     try {
-      // Use upsert to handle cases where the record might not exist
       const { error } = await supabase
         .from('user_settings')
-        .upsert({
-          user_id: user.id,
-          ...newSettings
-        }, {
-          onConflict: 'user_id'
-        });
-
+        .upsert({ user_id: user.id, ...newSettings }, { onConflict: 'user_id' });
       if (error) throw error;
     } catch (error) {
       console.error('Error updating settings:', error);
-      // Revert on error if necessary (but usually just logging is fine for this UI)
       throw error;
     }
   };
-
 
   return (
     <AuthContext.Provider value={{ user, session, profile, settings, loading, signOut, updateSettings }}>

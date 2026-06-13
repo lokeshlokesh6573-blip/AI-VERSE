@@ -59,7 +59,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         if (error) throw error;
         onClose();
-        window.location.reload(); 
+        // window.location.reload(); <- Removed to prevent race conditions
       } else if (mode === 'signup') {
         // Omitting emailRedirectTo lets Supabase use the default Site URL
         const { error, data } = await supabase.auth.signUp({
@@ -75,7 +75,7 @@ export default function AuthModal({ isOpen, onClose }: AuthModalProps) {
            setSuccess('Profile created successfully. Welcome to AI Verse.');
            setTimeout(() => {
              onClose();
-             window.location.reload();
+             // window.location.reload(); <- Removed
            }, 2000);
         } else {
            setSuccess('Security verification link sent to your email.');
