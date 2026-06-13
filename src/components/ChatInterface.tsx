@@ -2,17 +2,16 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Send, Mic, Cpu, Shield, Sparkles, Paperclip, Download, FileText, Volume2, Camera, RefreshCcw, Settings, Menu, X } from 'lucide-react';
+import { Send, Mic, Cpu, Shield, Settings, Menu, X, Paperclip } from 'lucide-react';
 import { VoiceAssistant, getVoiceAssistant } from '@/lib/voice-assistant';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Analytics } from '@/lib/analytics';
 import dynamic from 'next/dynamic';
-import { SquareSquare } from 'lucide-react'; 
 import CameraVision from './CameraVision';
 import { useRouter } from 'next/navigation';
 import ChatSidebar from './ChatSidebar';
-import SettingsPanel from './settings/SettingsPanel';
+
 import { createConversation, fetchUserConversations, fetchConversationMessages, saveMessage as saveMessageDB } from '@/lib/supabase';
 import { cn } from '@/utils/cn';
 
@@ -201,6 +200,7 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
         body: JSON.stringify({ 
           messages: payloadMessages, 
           hasImage: currentFileContext?.type === 'image',
+          imageData: currentFileContext?.type === 'image' ? currentFileContext.data : null,
           model: settings?.model,
           response_style: settings?.response_style || 'detailed'
         }),
@@ -335,7 +335,7 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
         </div>
 
         <div className="flex flex-col h-full">
-          <div className="h-16 px-6 flex items-center justify-between border-b border-white/10 bg-black/20 backdrop-blur-md z-40">
+          <div className="h-16 px-6 flex items-center justify-between border-b border-white/10 bg-background/50 backdrop-blur-md z-40">
             <div className="flex items-center space-x-3">
               <Cpu className="text-blue-500 w-5 h-5 animate-pulse" />
               <span className="text-sm font-medium opacity-80 uppercase tracking-widest font-orbitron">AI VERSE v3.1.2</span>

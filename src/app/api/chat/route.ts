@@ -24,7 +24,7 @@ async function attemptChatCompletion(clientParams: any, apiKey: string, baseURL:
 
 export async function POST(req: Request) {
   try {
-    const { messages, apiKey: clientApiKey, model: clientModel, hasImage, response_style } = await req.json();
+    const { messages, apiKey: clientApiKey, model: clientModel, hasImage, imageData, response_style } = await req.json();
 
     const groqKey = clientApiKey || process.env.GROQ_API_KEY;
     const openRouterKey = process.env.OPENROUTER_API_KEY;
@@ -232,8 +232,23 @@ Act like a smart, trustworthy, logical, and natural companion that people genuin
 ${languageRule}`,
     };
 
+    const processedMessages = [...messages];
+    if (hasImage && imageData) {
+      const lastIndex = processedMessages.length - 1;
+      if (lastIndex >= 0 && processedMessages[lastIndex].role === 'user') {
+        const originalText = processedMessages[lastIndex].content;
+        processedMessages[lastIndex] = {
+          role: 'user',
+          content: [
+            { type: 'text', text: originalText },
+            { type: 'image_url', image_url: { url: imageData } }
+          ]
+        };
+      }
+    }
+
     const payload = {
-      messages: [dynamicSystemPrompt, ...messages]
+      messages: [dynamicSystemPrompt, ...processedMessages]
     };
     let response;
 

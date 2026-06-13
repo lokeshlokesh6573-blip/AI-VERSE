@@ -114,9 +114,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       if (profileError && profileError.code === 'PGRST116') {
         console.log("[Auth] Profile not found, creating default...");
         const { data: userData } = await supabase.auth.getUser();
+        const email = userData.user?.email || '';
+        const username = userData.user?.user_metadata?.username || email.split('@')[0];
         const { data: newProfile, error: createError } = await supabase
           .from('profiles')
-          .insert([{ id: userId, email: userData.user?.email || '' }])
+          .insert([{ 
+            id: userId, 
+            email,
+            username,
+            role: 'user',
+            plan: 'free'
+          }])
           .select()
           .single();
           
