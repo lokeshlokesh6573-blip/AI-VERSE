@@ -36,8 +36,8 @@ const AuthContext = createContext<AuthContextType>({
   profile: null,
   settings: null,
   loading: true,
-  signOut: async () => {},
-  updateSettings: async () => {},
+  signOut: async () => { },
+  updateSettings: async () => { },
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -50,6 +50,20 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const fetchingUserId = useRef<string | null>(null);
 
   useEffect(() => {
+    const initializeAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+
+      setSession(session);
+      setUser(session?.user ?? null);
+
+      if (session?.user) {
+        await fetchUserData(session.user.id);
+      } else {
+        setLoading(false);
+      }
+    };
+
+    initializeAuth();
     // Initial sync from localStorage to prevent flash
     const saved = localStorage.getItem('user_settings');
     if (saved) {
@@ -68,7 +82,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       console.log("[Auth] State change:", event, session?.user?.id);
-      
+
       setSession(session);
       setUser(session?.user ?? null);
 
@@ -81,7 +95,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           setLoading(false);
         }
       }
-      
+
       isInitialized = true;
     });
 
@@ -110,7 +124,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         .select('*')
         .eq('id', userId)
         .single();
-      
+
       if (profileError && profileError.code === 'PGRST116') {
         console.log("[Auth] Profile not found, creating default...");
         const { data: userData } = await supabase.auth.getUser();
@@ -118,8 +132,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         const username = userData.user?.user_metadata?.username || email.split('@')[0];
         const { data: newProfile, error: createError } = await supabase
           .from('profiles')
-          .insert([{ 
-            id: userId, 
+          .insert([{
+            id: userId,
             email,
             username,
             role: 'user',
@@ -127,7 +141,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           }])
           .select()
           .single();
-          
+
         if (!createError) profileData = newProfile;
       }
       setProfile(profileData);
@@ -138,12 +152,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         .select('*')
         .eq('user_id', userId)
         .single();
-      
+
       if (settingsError && settingsError.code === 'PGRST116') {
         console.log("[Auth] Settings not found, creating default...");
         const { data: newSettings, error: createError } = await supabase
           .from('user_settings')
-          .insert([{ 
+          .insert([{
             user_id: userId,
             theme: 'dark',
             language: 'en',
@@ -154,21 +168,21 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           .single();
         if (!createError) settingsData = newSettings;
       }
-      
+
       const userSettings: UserSettings = {
         theme: settingsData?.theme || 'dark',
         language: settingsData?.language || 'en',
         response_style: settingsData?.response_style || 'detailed',
         model: settingsData?.model || 'llama-3.3-70b-versatile',
       };
-      
+
       setSettings(userSettings);
       localStorage.setItem('user_settings', JSON.stringify(userSettings));
-      
+
       if (userSettings.theme === 'dark') {
-         document.documentElement.classList.add('dark');
+        document.documentElement.classList.add('dark');
       } else {
-         document.documentElement.classList.remove('dark');
+        document.documentElement.classList.remove('dark');
       }
     } catch (error) {
       console.error('[Auth] fetchUserData error:', error);
@@ -196,8 +210,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     localStorage.setItem('user_settings', JSON.stringify(updated));
 
     if (newSettings.theme) {
-       if (newSettings.theme === 'dark') document.documentElement.classList.add('dark');
-       else document.documentElement.classList.remove('dark');
+      if (newSettings.theme === 'dark') document.documentElement.classList.add('dark');
+      else document.documentElement.classList.remove('dark');
     }
 
     try {
