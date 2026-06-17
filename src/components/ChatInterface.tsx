@@ -48,7 +48,7 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<any[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const voiceRef = useRef<VoiceAssistant | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -142,7 +142,7 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
     if (!user) return;
     try {
       await saveMessageDB(conversationId, user.id, role, content);
-      setConversations(prev => prev.map(c => 
+      setConversations(prev => prev.map(c =>
         c.id === conversationId ? { ...c, updated_at: new Date().toISOString() } : c
       ).sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()));
     } catch (err) {
@@ -156,14 +156,14 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
 
     let targetConvId = currentConversationId;
     if (!targetConvId && user) {
-       try {
-         const newConv = await createConversation(user.id);
-         setConversations([newConv, ...conversations]);
-         targetConvId = newConv.id;
-         setCurrentConversationId(targetConvId);
-       } catch (err) {
-         console.error("Failed to auto-create conversation:", err);
-       }
+      try {
+        const newConv = await createConversation(user.id);
+        setConversations([newConv, ...conversations]);
+        targetConvId = newConv.id;
+        setCurrentConversationId(targetConvId);
+      } catch (err) {
+        console.error("Failed to auto-create conversation:", err);
+      }
     }
 
     voiceRef.current?.stopSpeaking();
@@ -183,8 +183,8 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
     setInput('');
 
     if (targetConvId) {
-       saveMessage(targetConvId, 'user', text);
-       Analytics.chatSent(user?.id);
+      saveMessage(targetConvId, 'user', text);
+      Analytics.chatSent(user?.id);
     }
 
     try {
@@ -197,8 +197,8 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          messages: payloadMessages, 
+        body: JSON.stringify({
+          messages: payloadMessages,
           hasImage: currentFileContext?.type === 'image',
           imageData: currentFileContext?.type === 'image' ? currentFileContext.data : null,
           model: settings?.model,
@@ -224,7 +224,7 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
       }
 
       if (targetConvId) {
-         saveMessage(targetConvId, 'assistant', aiText);
+        saveMessage(targetConvId, 'assistant', aiText);
       }
     } catch (error) {
       console.error(error);
@@ -284,7 +284,7 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
 
   const renderMessageContent = (text: string, sender: 'user' | 'ai') => {
     if (sender === 'user') return <p className="whitespace-pre-wrap">{text}</p>;
-    
+
     const parts = text.split(/(\[GENERATE_IMAGE:.*?\]|\[CSV_DATA\].*?\[\/CSV_DATA\])/g);
 
     return (
@@ -316,12 +316,12 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
             exit={{ width: 0, opacity: 0 }}
             className="hidden md:block shrink-0 border-r border-white/5"
           >
-            <ChatSidebar 
-              conversations={conversations} 
-              activeId={currentConversationId} 
-              onSelect={handleSelectConversation} 
-              onNew={handleNewChat} 
-              onDelete={handleDeleteChat} 
+            <ChatSidebar
+              conversations={conversations}
+              activeId={currentConversationId}
+              onSelect={handleSelectConversation}
+              onNew={handleNewChat}
+              onDelete={handleDeleteChat}
             />
           </motion.div>
         )}
@@ -329,9 +329,9 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
 
       <div className="flex-1 flex flex-col relative overflow-hidden h-full">
         <div className="absolute top-4 left-4 z-50 md:hidden">
-            <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 glass rounded-full">
-                {isSidebarOpen ? <X /> : <Menu />}
-            </button>
+          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 glass rounded-full">
+            {isSidebarOpen ? <X /> : <Menu />}
+          </button>
         </div>
 
         <div className="flex flex-col h-full">
@@ -382,7 +382,7 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
             </button>
             <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} accept="image/*,.pdf,.docx,.txt,.csv,.json,.md" />
             <button onClick={() => fileInputRef.current?.click()} className="p-4 rounded-full hover:bg-white/5 text-zinc-500">
-               <Paperclip className="w-5 h-5" />
+              <Paperclip className="w-5 h-5" />
             </button>
             <input
               type="text"
@@ -392,8 +392,8 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
               placeholder="Query Core Intelligence..."
               className="flex-1 bg-transparent border-none outline-none px-4 text-foreground placeholder:text-foreground/20 font-orbitron text-sm"
             />
-            <button onClick={() => handleSend()} disabled={isLoading} className="p-4 bg-red-600 hover:bg-red-700 rounded-full transition-all text-white shadow-lg active:scale-95 disabled:opacity-50">
-               <Send className="w-6 h-6" />
+            <button onClick={() => handleSend()} disabled={false} className="p-4 bg-red-600 hover:bg-red-700 rounded-full transition-all text-white shadow-lg active:scale-95 disabled:opacity-50">
+              <Send className="w-6 h-6" />
             </button>
           </div>
         </div>
