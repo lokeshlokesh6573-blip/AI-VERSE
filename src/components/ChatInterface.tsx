@@ -433,7 +433,15 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
               placeholder="Query Core Intelligence..."
               className="flex-1 bg-transparent border-none outline-none px-4 text-foreground placeholder:text-foreground/20 font-orbitron text-sm"
             />
-            <button onClick={() => handleSend()} disabled={isLoading || !input.trim()} className="p-4 bg-red-600 hover:bg-red-700 rounded-full transition-all text-white shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
+            <button
+              onClick={() => {
+                alert("Button clicked");
+                console.log("BUTTON CLICKED");
+                handleSend();
+              }}
+              disabled={isLoading || !input.trim()}
+              className="p-4 bg-red-600 hover:bg-red-700 rounded-full transition-all text-white shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
               <Send className="w-6 h-6" />
             </button>
           </div>
