@@ -94,7 +94,9 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
   }, [user]);
 
   const handleSelectConversation = async (id: string) => {
+    console.log('[ChatInterface] handleSelectConversation called for id:', id);
     setCurrentConversationId(id);
+    // IMPORTANT: always reset isLoading via finally — never leave it stuck true
     setIsLoading(true);
     onLoadingChange?.(true);
     try {
@@ -106,8 +108,9 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
         timestamp: new Date(m.created_at)
       })));
     } catch (err) {
-      console.error("Error loading messages:", err);
+      console.error('[ChatInterface] Error loading messages:', err);
     } finally {
+      console.log('[ChatInterface] handleSelectConversation done — isLoading → false');
       setIsLoading(false);
       onLoadingChange?.(false);
     }
@@ -151,48 +154,77 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
   };
 
   const handleSend = async (overrideText?: string) => {
-    const text = overrideText || input;
-    if (!text.trim() || isLoading) return;
+    console.log('[ChatInterface] handleSend called. input:', JSON.stringify(overrideText ?? input), '| isLoading:', isLoading, '| user:', !!user);
 
+    const text = overrideText || input;
+
+    // ── Guard 1: empty input ──────────────────────────────────────────────
+    if (!text.trim()) {
+      console.warn('[ChatInterface] EARLY RETURN: input is empty or whitespace.');
+      return;
+    }
+
+    // ── Guard 2: already loading ──────────────────────────────────────────
+    if (isLoading) {
+      console.warn('[ChatInterface] EARLY RETURN: isLoading is true — a previous send is still in-flight or got stuck.');
+      return;
+    }
+
+    // ── Step 1: resolve/create conversation ID ────────────────────────────
     let targetConvId = currentConversationId;
     if (!targetConvId && user) {
+      console.log('[ChatInterface] No active conversation — auto-creating one...');
       try {
         const newConv = await createConversation(user.id);
-        setConversations([newConv, ...conversations]);
+        setConversations(prev => [newConv, ...prev]);
         targetConvId = newConv.id;
         setCurrentConversationId(targetConvId);
+        console.log('[ChatInterface] Auto-created conversation:', targetConvId);
       } catch (err) {
-        console.error("Failed to auto-create conversation:", err);
+        // Non-fatal: conversation saving failed but we still send the message
+        console.warn('[ChatInterface] Failed to auto-create conversation (continuing without save):', err);
+        targetConvId = null;
       }
     }
 
+    // ── Step 2: optimistically update UI and lock input ───────────────────
     voiceRef.current?.stopSpeaking();
     setIsSpeaking(false);
     onTalkingChange?.(false);
 
     setIsLoading(true);
     onLoadingChange?.(true);
+
     const userMsg: Message = {
       id: Date.now().toString(),
-      text: text,
+      text,
       sender: 'user',
       timestamp: new Date()
     };
-
     setMessages(prev => [...prev, userMsg]);
     setInput('');
 
+    // ── Step 3: persist user message (non-blocking, non-fatal) ────────────
     if (targetConvId) {
       saveMessage(targetConvId, 'user', text);
+    }
+    try {
       Analytics.chatSent(user?.id);
+    } catch (analyticsErr) {
+      console.warn('[ChatInterface] Analytics.chatSent threw (non-fatal):', analyticsErr);
     }
 
+    // ── Step 4: call the API ──────────────────────────────────────────────
     try {
       const currentFileContext = fileContext;
       if (currentFileContext) setFileContext(null);
 
-      const payloadMessages: any[] = [...messages.map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.text }))];
+      const payloadMessages: any[] = [
+        ...messages.map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.text }))
+      ];
       payloadMessages.push({ role: 'user', content: text });
+
+      console.log('[ChatInterface] → calling fetch /api/chat  model:', settings?.model, 'messages count:', payloadMessages.length);
 
       const response = await fetch('/api/chat', {
         method: 'POST',
@@ -206,7 +238,12 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
         }),
       });
 
-      if (!response.ok) throw new Error('API request failed');
+      console.log('[ChatInterface] fetch response status:', response.status, response.ok);
+
+      if (!response.ok) {
+        const errBody = await response.text().catch(() => '(unreadable body)');
+        throw new Error(`API request failed: ${response.status} — ${errBody}`);
+      }
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
@@ -223,11 +260,13 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
         setMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, text: aiText } : m));
       }
 
+      console.log('[ChatInterface] Stream complete. AI text length:', aiText.length);
+
       if (targetConvId) {
         saveMessage(targetConvId, 'assistant', aiText);
       }
     } catch (error) {
-      console.error(error);
+      console.error('[ChatInterface] ✖ fetch/stream error:', error);
       setMessages(prev => [...prev, {
         id: `error-${Date.now()}`,
         text: "Error connecting to Core Intelligence. Please check your network.",
@@ -235,6 +274,8 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
         timestamp: new Date()
       }]);
     } finally {
+      // This ALWAYS runs — isLoading is always released
+      console.log('[ChatInterface] handleSend finally — isLoading → false');
       setIsLoading(false);
       onLoadingChange?.(false);
     }
@@ -392,7 +433,7 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
               placeholder="Query Core Intelligence..."
               className="flex-1 bg-transparent border-none outline-none px-4 text-foreground placeholder:text-foreground/20 font-orbitron text-sm"
             />
-            <button onClick={() => handleSend()} disabled={false} className="p-4 bg-red-600 hover:bg-red-700 rounded-full transition-all text-white shadow-lg active:scale-95 disabled:opacity-50">
+            <button onClick={() => handleSend()} disabled={isLoading || !input.trim()} className="p-4 bg-red-600 hover:bg-red-700 rounded-full transition-all text-white shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
               <Send className="w-6 h-6" />
             </button>
           </div>

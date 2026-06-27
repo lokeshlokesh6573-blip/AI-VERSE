@@ -29,8 +29,8 @@ export async function POST(req: Request) {
     const groqKey = clientApiKey || process.env.GROQ_API_KEY;
     const openRouterKey = process.env.OPENROUTER_API_KEY;
 
-    // Default model if none specified
-    const defaultModel = hasImage ? 'llama-3.2-11b-vision-preview' : 'llama-3.3-70b-versatile';
+    // Default model if none specified - optimized for speed
+    const defaultModel = hasImage ? 'llama-3.2-11b-vision-preview' : 'llama-3.1-8b-instant';
     const model = clientModel || defaultModel;
 
     // Response style instruction
