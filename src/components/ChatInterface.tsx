@@ -475,31 +475,36 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
           </div>
         </div>
 
-        <div className="absolute bottom-0 left-0 w-full p-4 bg-linear-to-t from-background via-background/80 to-transparent z-30">
-          <div className="max-w-4xl mx-auto glass rounded-full flex items-center p-2 border border-white/10 shadow-2xl">
-            <button onClick={startVoice} className={cn("p-4 rounded-full transition-all", isListening ? "bg-red-600 animate-pulse" : "hover:bg-white/5")}>
+        <div className="absolute bottom-0 left-0 w-full p-4 bg-linear-to-t from-black via-black/80 to-transparent z-30">
+          <form 
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleSend();
+            }}
+            className="max-w-4xl mx-auto bg-zinc-950/90 backdrop-blur-xl rounded-full flex items-center p-2 border border-white/15 shadow-2xl relative z-40"
+          >
+            <button type="button" onClick={startVoice} className={cn("p-4 rounded-full transition-all", isListening ? "bg-red-600 animate-pulse" : "hover:bg-white/5")}>
               <Mic className={cn("w-6 h-6", isListening ? "text-white" : "text-blue-400")} />
             </button>
             <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileUpload} accept="image/*,.pdf,.docx,.txt,.csv,.json,.md" />
-            <button onClick={() => fileInputRef.current?.click()} className="p-4 rounded-full hover:bg-white/5 text-zinc-500">
+            <button type="button" onClick={() => fileInputRef.current?.click()} className="p-4 rounded-full hover:bg-white/5 text-zinc-500">
               <Paperclip className="w-5 h-5" />
             </button>
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSend()}
               placeholder="Query Core Intelligence..."
-              className="flex-1 bg-transparent border-none outline-none px-4 text-foreground placeholder:text-foreground/20 font-orbitron text-sm"
+              className="flex-1 bg-transparent border-none outline-none px-4 text-foreground placeholder:text-foreground/30 font-orbitron text-sm"
             />
             <button
-              onClick={() => handleSend()}
+              type="submit"
               disabled={isLoading || !input.trim()}
-              className="p-4 bg-red-600 hover:bg-red-700 rounded-full transition-all text-white shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="p-4 bg-red-600 hover:bg-red-700 rounded-full transition-all text-white shadow-lg active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
             >
               <Send className="w-6 h-6" />
             </button>
-          </div>
+          </form>
         </div>
       </div>
     </div>
