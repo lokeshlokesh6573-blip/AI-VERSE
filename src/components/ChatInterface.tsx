@@ -48,6 +48,22 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
   const [currentConversationId, setCurrentConversationId] = useState<string | null>(null);
   const [conversations, setConversations] = useState<any[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const handleResize = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      if (mobile) {
+        setIsSidebarOpen(false);
+      } else {
+        setIsSidebarOpen(true);
+      }
+    };
+    handleResize();
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const scrollRef = useRef<HTMLDivElement>(null);
   const voiceRef = useRef<VoiceAssistant | null>(null);
@@ -83,15 +99,35 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
       setConversations(data);
       if (data.length > 0 && !currentConversationId) {
         handleSelectConversation(data[0].id);
+      } else if (data.length === 0 && !currentConversationId) {
+        // Auto-initialize a conversation so currentConversationId is set
+        const initConv = await createConversation(user.id, 'New Conversation');
+        setConversations([initConv]);
+        setCurrentConversationId(initConv.id);
       }
     } catch (err) {
-      console.error("Error loading conversations:", err);
+      console.warn("Error loading conversations:", err);
+      if (!currentConversationId) {
+        const localId = `local-conv-${Date.now()}`;
+        setCurrentConversationId(localId);
+      }
     }
   };
 
   useEffect(() => {
     loadConversations();
   }, [user]);
+
+  // Safety net: if isLoading gets stuck, reset it after 15s
+  useEffect(() => {
+    if (!isLoading) return;
+    const safetyTimer = setTimeout(() => {
+      console.warn('[ChatInterface] isLoading safety reset triggered after 15s');
+      setIsLoading(false);
+      onLoadingChange?.(false);
+    }, 15000);
+    return () => clearTimeout(safetyTimer);
+  }, [isLoading]);
 
   const handleSelectConversation = async (id: string) => {
     console.log('[ChatInterface] handleSelectConversation called for id:', id);
@@ -100,36 +136,44 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
     onLoadingChange?.(true);
     try {
       const msgs = await fetchConversationMessages(id);
-      setMessages(msgs.map(m => ({
-        id: m.id,
-        text: m.content,
-        sender: m.role as 'user' | 'ai',
-        timestamp: new Date(m.created_at)
-      })));
+      if (msgs && msgs.length > 0) {
+        setMessages(msgs.map(m => ({
+          id: m.id,
+          text: m.content,
+          sender: m.role as 'user' | 'ai',
+          timestamp: new Date(m.created_at)
+        })));
+      } else {
+        setMessages([{ id: '1', text: "Systems online. How can I assist you today?", sender: 'ai', timestamp: new Date() }]);
+      }
     } catch (err) {
-      console.error("[ChatInterface] Error loading messages:", err);
+      console.error('[ChatInterface] Error loading messages:', err);
     } finally {
-      console.log('[ChatInterface] handleSelectConversation finished - isLoading reset to false');
       setIsLoading(false);
       onLoadingChange?.(false);
     }
   };
 
   const handleNewChat = async () => {
-    if (!user) return;
+    const userId = user?.id || 'guest';
     try {
-      const newConv = await createConversation(user.id);
-      setConversations(prev => [newConv, ...prev]);
+      const newConv = await createConversation(userId, 'New Conversation');
+      setConversations(prev => [newConv, ...prev.filter(c => c.id !== newConv.id)]);
       setCurrentConversationId(newConv.id);
       setMessages([{ id: '1', text: "Systems online. How can I assist you today?", sender: 'ai', timestamp: new Date() }]);
     } catch (err) {
       console.error("Error creating chat:", err);
+      const localId = `local-conv-${Date.now()}`;
+      setCurrentConversationId(localId);
+      setMessages([{ id: '1', text: "Systems online. How can I assist you today?", sender: 'ai', timestamp: new Date() }]);
     }
   };
 
   const handleDeleteChat = async (id: string) => {
     try {
-      await supabase.from('conversations').delete().eq('id', id);
+      if (user && !user.id?.startsWith('mock-') && !id.startsWith('local-conv-')) {
+        await supabase.from('conversations').delete().eq('id', id);
+      }
       setConversations(prev => prev.filter(c => c.id !== id));
       if (currentConversationId === id) {
         setMessages([{ id: '1', text: "Chat deleted. Systems ready for new command.", sender: 'ai', timestamp: new Date() }]);
@@ -141,9 +185,9 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
   };
 
   const saveMessage = async (conversationId: string, role: string, content: string) => {
-    if (!user) return;
+    const userId = user?.id || 'guest';
     try {
-      await saveMessageDB(conversationId, user.id, role, content);
+      await saveMessageDB(conversationId, userId, role, content);
       setConversations(prev => prev.map(c =>
         c.id === conversationId ? { ...c, updated_at: new Date().toISOString() } : c
       ).sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime()));
@@ -153,30 +197,17 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
   };
 
   const handleSend = async (overrideText?: string) => {
-    console.log('[ChatInterface] handleSend called. input:', JSON.stringify(overrideText ?? input), '| isLoading:', isLoading, '| user:', !!user);
-    
+    console.log('[ChatInterface] handleSend initiated. Input:', JSON.stringify(overrideText ?? input));
+
     const text = overrideText || input;
+
     if (!text.trim()) {
-      console.warn('[ChatInterface] handleSend EARLY RETURN: empty input');
-      return;
-    }
-    if (isLoading) {
-      console.warn('[ChatInterface] handleSend EARLY RETURN: already isLoading');
       return;
     }
 
-    let targetConvId = currentConversationId;
-    if (!targetConvId && user) {
-      console.log('[ChatInterface] No conv ID, auto-creating...');
-      try {
-        const newConv = await createConversation(user.id);
-        setConversations(prev => [newConv, ...prev]);
-        targetConvId = newConv.id;
-        setCurrentConversationId(targetConvId);
-      } catch (err) {
-        console.warn("[ChatInterface] Failed to auto-create conversation (continuing without save):", err);
-        targetConvId = null;
-      }
+    if (isLoading) {
+      console.warn('[ChatInterface] Early return: busy loading previous request.');
+      return;
     }
 
     voiceRef.current?.stopSpeaking();
@@ -185,34 +216,56 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
 
     setIsLoading(true);
     onLoadingChange?.(true);
-    
+
     const userMsg: Message = {
       id: Date.now().toString(),
-      text: text,
+      text,
       sender: 'user',
       timestamp: new Date()
     };
-
     setMessages(prev => [...prev, userMsg]);
     setInput('');
 
-    if (targetConvId) {
-      saveMessage(targetConvId, 'user', text);
+    // Ensure valid target conversation ID
+    let targetConvId = currentConversationId;
+    if (!targetConvId) {
+      console.log('[ChatInterface] No active conv ID — auto-creating conversation...');
+      const userId = user?.id || 'guest';
       try {
-        Analytics.chatSent(user?.id);
-      } catch (e) {
-        console.warn('[ChatInterface] Analytics failed:', e);
+        const titleSnippet = text.length > 25 ? text.substring(0, 25) + '...' : text;
+        const newConv = await createConversation(userId, titleSnippet);
+        targetConvId = newConv.id;
+        setCurrentConversationId(targetConvId);
+        setConversations(prev => [newConv, ...prev.filter(c => c.id !== targetConvId)]);
+      } catch (convErr) {
+        console.warn('[ChatInterface] Failed to create conv on DB, using local ID:', convErr);
+        targetConvId = `local-conv-${Date.now()}`;
+        setCurrentConversationId(targetConvId);
       }
     }
 
+    // Persist user message
+    if (targetConvId) {
+      saveMessage(targetConvId, 'user', text);
+    }
+    try {
+      if (user?.id && !user.id.startsWith('mock-')) Analytics.chatSent(user.id);
+    } catch (analyticsErr) {
+      console.warn('[ChatInterface] Analytics notice:', analyticsErr);
+    }
+
+    // API Call
     try {
       const currentFileContext = fileContext;
       if (currentFileContext) setFileContext(null);
 
-      const payloadMessages: any[] = [...messages.map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.text }))];
+      const payloadMessages: any[] = [
+        ...messages.map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.text }))
+      ];
       payloadMessages.push({ role: 'user', content: text });
 
-      console.log('[ChatInterface] Calling API /api/chat');
+      console.log('[ChatInterface] Sending request to /api/chat. Model:', settings?.model || 'default');
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -225,8 +278,10 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
         }),
       });
 
-      console.log('[ChatInterface] API status:', response.status);
-      if (!response.ok) throw new Error(`API request failed: ${response.status}`);
+      if (!response.ok) {
+        const errJson = await response.json().catch(() => ({ message: 'HTTP Error ' + response.status }));
+        throw new Error(errJson.message || `API request failed with status ${response.status}`);
+      }
 
       const reader = response.body?.getReader();
       const decoder = new TextDecoder();
@@ -235,27 +290,28 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
       const aiMsgId = (Date.now() + 1).toString();
       setMessages(prev => [...prev, { id: aiMsgId, text: '', sender: 'ai', timestamp: new Date() }]);
 
-      while (true) {
-        const { done, value } = await reader!.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        aiText += chunk;
-        setMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, text: aiText } : m));
+      if (reader) {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value, { stream: true });
+          aiText += chunk;
+          setMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, text: aiText } : m));
+        }
       }
 
       if (targetConvId) {
         saveMessage(targetConvId, 'assistant', aiText);
       }
-    } catch (error) {
-      console.error('[ChatInterface] handleSend error:', error);
+    } catch (error: any) {
+      console.error('[ChatInterface] Error during completion stream:', error);
       setMessages(prev => [...prev, {
         id: `error-${Date.now()}`,
-        text: "Error connecting to Core Intelligence. Please check your network.",
+        text: `Error connecting to Core Intelligence: ${error?.message || 'Server error'}. Please try again.`,
         sender: 'ai',
         timestamp: new Date()
       }]);
     } finally {
-      console.log('[ChatInterface] handleSend finished - isLoading reset to false');
       setIsLoading(false);
       onLoadingChange?.(false);
     }
@@ -331,33 +387,56 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
     <div className="flex h-full w-full bg-background text-foreground transition-colors duration-300">
       <AnimatePresence>
         {isSidebarOpen && (
-          <motion.div
-            initial={{ width: 0, opacity: 0 }}
-            animate={{ width: 288, opacity: 1 }}
-            exit={{ width: 0, opacity: 0 }}
-            className="hidden md:block shrink-0 border-r border-white/5"
-          >
-            <ChatSidebar
-              conversations={conversations}
-              activeId={currentConversationId}
-              onSelect={handleSelectConversation}
-              onNew={handleNewChat}
-              onDelete={handleDeleteChat}
-            />
-          </motion.div>
+          <>
+            {isMobile && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 0.5 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black z-45"
+                onClick={() => setIsSidebarOpen(false)}
+              />
+            )}
+            <motion.div
+              initial={isMobile ? { x: -288 } : { width: 0, opacity: 0 }}
+              animate={isMobile ? { x: 0 } : { width: 288, opacity: 1 }}
+              exit={isMobile ? { x: -288 } : { width: 0, opacity: 0 }}
+              transition={{ type: 'tween', duration: 0.3 }}
+              className={cn(
+                "shrink-0 border-r border-white/5",
+                isMobile 
+                  ? "fixed inset-y-0 left-0 w-72 bg-zinc-950/95 backdrop-blur-xl z-50 h-full" 
+                  : "relative h-full"
+              )}
+            >
+              <ChatSidebar
+                conversations={conversations}
+                activeId={currentConversationId}
+                onSelect={(id) => {
+                  handleSelectConversation(id);
+                  if (isMobile) setIsSidebarOpen(false);
+                }}
+                onNew={() => {
+                  handleNewChat();
+                  if (isMobile) setIsSidebarOpen(false);
+                }}
+                onDelete={handleDeleteChat}
+              />
+            </motion.div>
+          </>
         )}
       </AnimatePresence>
 
       <div className="flex-1 flex flex-col relative overflow-hidden h-full">
         <div className="absolute top-4 left-4 z-50 md:hidden">
-          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 glass rounded-full">
+          <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 glass rounded-full text-white">
             {isSidebarOpen ? <X /> : <Menu />}
           </button>
         </div>
 
         <div className="flex flex-col h-full">
           <div className="h-16 px-6 flex items-center justify-between border-b border-white/10 bg-background/50 backdrop-blur-md z-40">
-            <div className="flex items-center space-x-3">
+            <div className="flex items-center space-x-3 pl-12 md:pl-0">
               <Cpu className="text-blue-500 w-5 h-5 animate-pulse" />
               <span className="text-sm font-medium opacity-80 uppercase tracking-widest font-orbitron">AI VERSE v3.1.2</span>
             </div>
@@ -371,7 +450,7 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
             </div>
           </div>
 
-          <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-6 px-4 py-8 scrollbar-hide">
+          <div ref={scrollRef} className="flex-1 overflow-y-auto space-y-6 px-4 pt-8 pb-32 scrollbar-hide">
             {messages.map((msg) => (
               <motion.div key={msg.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div className={cn(

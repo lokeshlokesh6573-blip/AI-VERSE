@@ -1,0 +1,168 @@
+diff --git a/src/components/ChatInterface.tsx b/src/components/ChatInterface.tsx
+index 1b4bf9e..df7f501 100644
+--- a/src/components/ChatInterface.tsx
++++ b/src/components/ChatInterface.tsx
+@@ -96,6 +96,7 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
+   const handleSelectConversation = async (id: string) => {
+     console.log('[ChatInterface] handleSelectConversation called for id:', id);
+     setCurrentConversationId(id);
++    // IMPORTANT: always reset isLoading via finally — never leave it stuck true
+     setIsLoading(true);
+     onLoadingChange?.(true);
+     try {
+@@ -107,9 +108,9 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
+         timestamp: new Date(m.created_at)
+       })));
+     } catch (err) {
+-      console.error("[ChatInterface] Error loading messages:", err);
++      console.error('[ChatInterface] Error loading messages:', err);
+     } finally {
+-      console.log('[ChatInterface] handleSelectConversation finished - isLoading reset to false');
++      console.log('[ChatInterface] handleSelectConversation done — isLoading → false');
+       setIsLoading(false);
+       onLoadingChange?.(false);
+     }
+@@ -119,7 +120,7 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
+     if (!user) return;
+     try {
+       const newConv = await createConversation(user.id);
+-      setConversations(prev => [newConv, ...prev]);
++      setConversations([newConv, ...conversations]);
+       setCurrentConversationId(newConv.id);
+       setMessages([{ id: '1', text: "Systems online. How can I assist you today?", sender: 'ai', timestamp: new Date() }]);
+     } catch (err) {
+@@ -153,66 +154,79 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
+   };
+ 
+   const handleSend = async (overrideText?: string) => {
++    console.log("🔥 handleSend started");
+     console.log('[ChatInterface] handleSend called. input:', JSON.stringify(overrideText ?? input), '| isLoading:', isLoading, '| user:', !!user);
+-    
++
+     const text = overrideText || input;
++
++    // ── Guard 1: empty input ──────────────────────────────────────────────
+     if (!text.trim()) {
+-      console.warn('[ChatInterface] handleSend EARLY RETURN: empty input');
++      console.warn('[ChatInterface] EARLY RETURN: input is empty or whitespace.');
+       return;
+     }
++
++    // ── Guard 2: already loading ──────────────────────────────────────────
+     if (isLoading) {
+-      console.warn('[ChatInterface] handleSend EARLY RETURN: already isLoading');
++      console.warn('[ChatInterface] EARLY RETURN: isLoading is true — a previous send is still in-flight or got stuck.');
+       return;
+     }
+ 
++    // ── Step 1: resolve/create conversation ID ────────────────────────────
+     let targetConvId = currentConversationId;
+     if (!targetConvId && user) {
+-      console.log('[ChatInterface] No conv ID, auto-creating...');
++      console.log('[ChatInterface] No active conversation — auto-creating one...');
+       try {
+         const newConv = await createConversation(user.id);
+         setConversations(prev => [newConv, ...prev]);
+         targetConvId = newConv.id;
+         setCurrentConversationId(targetConvId);
++        console.log('[ChatInterface] Auto-created conversation:', targetConvId);
+       } catch (err) {
+-        console.warn("[ChatInterface] Failed to auto-create conversation (continuing without save):", err);
++        // Non-fatal: conversation saving failed but we still send the message
++        console.warn('[ChatInterface] Failed to auto-create conversation (continuing without save):', err);
+         targetConvId = null;
+       }
+     }
+ 
++    // ── Step 2: optimistically update UI and lock input ───────────────────
+     voiceRef.current?.stopSpeaking();
+     setIsSpeaking(false);
+     onTalkingChange?.(false);
+ 
+     setIsLoading(true);
+     onLoadingChange?.(true);
+-    
++
+     const userMsg: Message = {
+       id: Date.now().toString(),
+-      text: text,
++      text,
+       sender: 'user',
+       timestamp: new Date()
+     };
+-
+     setMessages(prev => [...prev, userMsg]);
+     setInput('');
+ 
++    // ── Step 3: persist user message (non-blocking, non-fatal) ────────────
+     if (targetConvId) {
+       saveMessage(targetConvId, 'user', text);
+-      try {
+-        Analytics.chatSent(user?.id);
+-      } catch (e) {
+-        console.warn('[ChatInterface] Analytics failed:', e);
+-      }
++    }
++    try {
++      Analytics.chatSent(user?.id);
++    } catch (analyticsErr) {
++      console.warn('[ChatInterface] Analytics.chatSent threw (non-fatal):', analyticsErr);
+     }
+ 
++    // ── Step 4: call the API ──────────────────────────────────────────────
+     try {
+       const currentFileContext = fileContext;
+       if (currentFileContext) setFileContext(null);
+ 
+-      const payloadMessages: any[] = [...messages.map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.text }))];
++      const payloadMessages: any[] = [
++        ...messages.map(m => ({ role: m.sender === 'user' ? 'user' : 'assistant', content: m.text }))
++      ];
+       payloadMessages.push({ role: 'user', content: text });
+ 
+-      console.log('[ChatInterface] Calling API /api/chat');
++      console.log('[ChatInterface] → calling fetch /api/chat  model:', settings?.model, 'messages count:', payloadMessages.length);
++
+       const response = await fetch('/api/chat', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+@@ -225,8 +239,12 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
+         }),
+       });
+ 
+-      console.log('[ChatInterface] API status:', response.status);
+-      if (!response.ok) throw new Error(`API request failed: ${response.status}`);
++      console.log('[ChatInterface] fetch response status:', response.status, response.ok);
++
++      if (!response.ok) {
++        const errBody = await response.text().catch(() => '(unreadable body)');
++        throw new Error(`API request failed: ${response.status} — ${errBody}`);
++      }
+ 
+       const reader = response.body?.getReader();
+       const decoder = new TextDecoder();
+@@ -243,11 +261,13 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
+         setMessages(prev => prev.map(m => m.id === aiMsgId ? { ...m, text: aiText } : m));
+       }
+ 
++      console.log('[ChatInterface] Stream complete. AI text length:', aiText.length);
++
+       if (targetConvId) {
+         saveMessage(targetConvId, 'assistant', aiText);
+       }
+     } catch (error) {
+-      console.error('[ChatInterface] handleSend error:', error);
++      console.error('[ChatInterface] ✖ fetch/stream error:', error);
+       setMessages(prev => [...prev, {
+         id: `error-${Date.now()}`,
+         text: "Error connecting to Core Intelligence. Please check your network.",
+@@ -255,7 +275,8 @@ export default function ChatInterface({ onLoadingChange, onTalkingChange, onList
+         timestamp: new Date()
+       }]);
+     } finally {
+-      console.log('[ChatInterface] handleSend finished - isLoading reset to false');
++      // This ALWAYS runs — isLoading is always released
++      console.log('[ChatInterface] handleSend finally — isLoading → false');
+       setIsLoading(false);
+       onLoadingChange?.(false);
+     }

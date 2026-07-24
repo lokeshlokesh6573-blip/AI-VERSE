@@ -21,7 +21,7 @@ interface ChatSidebarProps {
 export default function ChatSidebar({ conversations, activeId, onSelect, onNew, onDelete }: ChatSidebarProps) {
   return (
     <div className="w-72 h-full glass border-r border-white/5 flex flex-col items-stretch p-4 space-y-6">
-      <div className="flex items-center justify-between px-2">
+      <div className="flex items-center justify-between px-2 pl-12 md:pl-2">
         <div className="flex flex-col">
           <span className="text-[10px] text-red-500 tracking-[0.3em] font-black uppercase">Archived</span>
           <span className="text-white font-orbitron text-xs font-black tracking-widest">SIGNALS</span>

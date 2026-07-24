@@ -28,6 +28,7 @@ type AuthContextType = {
   loading: boolean;
   signOut: () => Promise<void>;
   updateSettings: (newSettings: Partial<UserSettings>) => Promise<void>;
+  bypassAuth: () => void;
 };
 
 const AuthContext = createContext<AuthContextType>({
@@ -38,6 +39,7 @@ const AuthContext = createContext<AuthContextType>({
   loading: true,
   signOut: async () => { },
   updateSettings: async () => { },
+  bypassAuth: () => { },
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -225,8 +227,33 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
+  const bypassAuth = () => {
+    const mockUser = {
+      id: 'mock-agent-peter',
+      email: 'peter.parker@starkindustries.com',
+      user_metadata: { username: 'PeterParker' }
+    } as any;
+    setUser(mockUser);
+    setSession({ user: mockUser } as any);
+    setProfile({
+      id: 'mock-agent-peter',
+      username: 'PeterParker',
+      email: 'peter.parker@starkindustries.com',
+      avatar_url: null,
+      role: 'agent',
+      plan: 'nexus_pro'
+    });
+    setSettings({
+      theme: 'dark',
+      language: 'en',
+      response_style: 'detailed',
+      model: 'llama-3.3-70b-versatile'
+    });
+    setLoading(false);
+  };
+
   return (
-    <AuthContext.Provider value={{ user, session, profile, settings, loading, signOut, updateSettings }}>
+    <AuthContext.Provider value={{ user, session, profile, settings, loading, signOut, updateSettings, bypassAuth }}>
       {children}
     </AuthContext.Provider>
   );

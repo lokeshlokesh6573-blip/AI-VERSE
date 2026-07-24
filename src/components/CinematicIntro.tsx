@@ -128,7 +128,7 @@ export default function CinematicIntro({ onComplete }: CinematicIntroProps) {
                 initial={{ height: '300vh', opacity: 1, rotate: 15 }}
                 animate={phase === 'landing' ? { height: 0, opacity: 0 } : { height: '300vh', opacity: 0.8 }}
                 transition={{ duration: 1, ease: "anticipate" }}
-                className="absolute bottom-[75%] left-1/2 w-[3px] bg-white/90 shadow-[0_0_20px_#fff] origin-bottom -translate-x-1/2"
+                className="absolute bottom-[75%] left-1/2 w-0.75 bg-white/90 shadow-[0_0_20px_#fff] origin-bottom -translate-x-1/2"
               />
 
               {/* THE HERO CHARACTER */}
