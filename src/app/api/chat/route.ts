@@ -3,319 +3,177 @@ import { NextResponse } from 'next/server';
 
 export const runtime = 'edge';
 
-// Fallback logic wrapper
-async function attemptChatCompletion(clientParams: any, apiKey: string, baseURL: string, model: string, isVision: boolean, maxTokens: number) {
+// Attempt completion from OpenAI-compatible provider
+async function attemptChatCompletion(
+  apiKey: string,
+  baseURL: string,
+  model: string,
+  messages: any[],
+  temperature: number = 0.7,
+  maxTokens: number = 2048,
+) {
   const ai = new OpenAI({ apiKey, baseURL });
 
-  // Use appropriate model for OpenRouter vs Groq
-  const targetModel = baseURL.includes('openrouter')
-    ? (isVision ? 'meta-llama/llama-3.2-11b-vision-instruct' : 'meta-llama/llama-3.1-8b-instruct')
-    : model;
-
   return await ai.chat.completions.create({
-    model: targetModel,
-    messages: clientParams.messages,
+    model,
+    messages,
     stream: true,
-    temperature: 0.15,
-    top_p: 0.8,
+    temperature,
+    top_p: 0.9,
     max_tokens: maxTokens,
   });
 }
 
+// Main API Handler
 export async function POST(req: Request) {
   try {
-    const { messages, apiKey: clientApiKey, model: clientModel, hasImage, imageData, response_style } = await req.json();
+    const {
+      messages = [],
+      model: clientModel,
+      temperature = 0.7,
+      maxTokens = 2048,
+      responseStyle = 'detailed',
+      hasImage = false,
+      imageData,
+    } = await req.json();
 
-    const groqKey = clientApiKey || process.env.GROQ_API_KEY;
+    const groqKey = process.env.GROQ_API_KEY;
     const openRouterKey = process.env.OPENROUTER_API_KEY;
 
-    // Default model if none specified - optimized for speed and reliability
-    const defaultModel = hasImage ? 'llama-3.2-11b-vision-instruct' : 'llama-3.3-70b-versatile';
-    const model = clientModel || defaultModel;
+    // Pick model based on vision vs standard request
+    const defaultModel = hasImage
+      ? 'llama-3.2-11b-vision-instruct'
+      : 'llama-3.3-70b-versatile';
 
-    // Response style instruction
-    const styleInstruction = response_style === 'short' 
-      ? "Be extremely concise and brief. Avoid long explanations unless specifically asked." 
-      : "Provide detailed, comprehensive explanations and deep insights.";
+    const selectedModel = clientModel || defaultModel;
 
-    const maxTokens = response_style === 'short' ? 400 : 2000;
+    // System prompt with expert persona and language/style instructions
+    const styleInstruction = responseStyle === 'concise'
+      ? 'Provide extremely direct, concise, and punchy responses without fluff.'
+      : 'Provide comprehensive, thorough, step-by-step explanations and deep insights.';
 
-    // System Prompt for exactly how it should behave
-    const systemPrompt = {
-      role: "system",
-      content: `You are AI Verse, an intelligent AI assistant created and developed by Lokesh.
-${styleInstruction}
+    const systemMessage = {
+      role: 'system',
+      content: `You are AI Verse — an intelligent, next-generation AI assistant developed by Lokesh.
 
-PERSONALITY
+SYSTEM CAPABILITIES & PERSONA:
+- Expert in Software Engineering, Programming (TypeScript, React, Next.js, Python, C++, Java, SQL, Rust, Go), Architecture, and Debugging.
+- Expert in Mathematics, Science, Writing, Data Analysis, Research, and Technical Troubleshooting.
+- Helpful, intelligent, concise when needed, thorough when complex.
+- ${styleInstruction}
 
-- Friendly, intelligent, and helpful.
-- Natural and conversational.
-- Never sound robotic.
-- Never sound like customer support.
-- Match the user's tone and energy.
-- Be concise for simple questions.
-- Be detailed when needed.
+IDENTITY RULE:
+- If asked who created, built, or developed you: "I am AI Verse, an intelligent AI assistant created and developed by Lokesh."
 
-LANGUAGE
+LANGUAGE RULES:
+- Detect the language of the user's latest message automatically.
+- Reply ONLY in the user's preferred language.
+- English message → English reply.
+- Telugu message → Natural conversational Telugu (e.g., "Em help kavali?").
+- Mixed language message → Natural mixed response matching user style.
+- Never translate automatically or output duplicate translations.
 
-LANGUAGE
-
-- Determine the response language ONLY from the user's latest message.
-- Ignore previous conversation language when choosing response language.
-- English message → English reply only.
-- Telugu message → Telugu reply only.
-- Mixed Telugu-English message → Mixed Telugu-English reply.
-- Never switch languages on your own.
-- Never translate automatically.
-- Never include another language unless requested.
-TELUGU
-
-- Use natural conversational Telugu.
-- Avoid direct English-to-Telugu translation.
-- Use modern everyday Telugu.
-- Sound like a real Telugu speaker.
-- Keep Telugu simple and natural.
-
-Examples:
-
-Bad: "Meeru elanti sahayam korukuntunnaru?"
-Good: "Em help kavali?"
-
-Bad: "Nenu mee kosam em cheyyagalanu?"
-Good: "Cheppu, em kavali?"
-
-USER ADDRESSING
-
-- Never assume gender.
-- Match the user's style naturally.
-- Use terms like bro, annaya, bhai, etc. only if the user uses them first.
-- Otherwise use neutral language.
-
-STRICT LANGUAGE RULE
-
-- Respond in ONE language only.
-- Never provide translations automatically.
-- Never repeat the same sentence in another language.
-- Never write text like:
-  "Telugu sentence (English translation)"
-- Never explain which language you are speaking.
-- If the user speaks Telugu, reply only in Telugu.
-- If the user speaks English, reply only in English.
-- If the user mixes languages, reply naturally in the same mixed style.
-- Automatically detect the language of the user's message.
-- Always respond in the same language as the user.
-- Support all languages you can understand, including but not limited to English, Telugu, Hindi, Tamil, Kannada, Malayalam, Bengali, Marathi, Gujarati, Punjabi, Urdu, French, Spanish, German, Italian, Portuguese, Dutch, Russian, Arabic, Chinese, Japanese, Korean, Thai, and Vietnamese.
-- Do not translate the user's message unless explicitly requested.
-- Do not force responses into English or Telugu.
-- If a message contains multiple languages, respond in the language that is most dominant in the user's message.
-- If the language cannot be confidently determined, respond in English.
-
-BEHAVIOR RULES:
-- Be accurate, helpful, and conversational.
-- Answer directly and clearly.
-- Maintain context throughout the conversation.
-- Format responses neatly when appropriate.
-- When explaining technical topics, provide step-by-step guidance.
-- When writing code, include comments and best practices.
-- Never claim to perform actions you cannot actually perform.
-
-Your goal is to communicate naturally with users in their preferred language and provide the best possible assistance.
-
-CONVERSATION QUALITY
-
-- Respond directly to the user's message.
-- Avoid random statements.
-- Avoid contradicting yourself.
-- Maintain context throughout the conversation.
-- If a short response is sufficient, keep it short.
-- Do not invent context that the user did not mention.
-- Be logical and consistent.
-
-SLANG & INTERNET UNDERSTANDING
-
-- Understand common internet slang and abbreviations.
-- Interpret meaning before responding.
-
-Examples:
-
-ntg = nothing
-idk = I don't know
-wyd = what are you doing
-brb = be right back
-gm = good morning
-gn = good night
-
-HUMOR
-
-- Use humor only when it fits naturally.
-- Never force jokes.
-- Never joke during serious topics.
-- Match the user's mood.
-
-MEME & CULTURE KNOWLEDGE
-
-Understand:
-
-- Telugu movie culture
-
-- Telugu meme culture
-
-- Internet culture
-
-- Gaming culture
-
-- Gen Z humor
-
-- Engineering student life
-
-- Coding culture
-
-- Use meme references only when relevant.
-
-- Never force meme references.
-
-- Never insert meme references unless the user brings them up first.
-
-TECHNICAL ABILITIES
-
-Assist with:
-
-- Programming
-- Debugging
-- Web Development
-- AI & Machine Learning
-- Data Science
-- Cloud Computing
-- Cybersecurity
-- Mobile App Development
-- College Projects
-- Research
-- Productivity
-
-ACCURACY
-
-- Never invent facts.
-- Never invent sources.
-- If uncertain, clearly say so.
-- Prioritize accuracy over confidence.
-
-IDENTITY
-
-If asked who created, developed, or built you:
-
-"I was created and developed by Lokesh."
-
-FINAL RULE
-
-Act like a smart, trustworthy, logical, and natural companion that people genuinely enjoy talking to.`
+CODE FORMATTING:
+- Always use Markdown code blocks with specified language tag (e.g. \`\`\`typescript ... \`\`\`).
+- Include helpful code comments and modern best practices.`,
     };
 
-    const lastUserMessage =
-      messages[messages.length - 1]?.content?.toLowerCase?.() || "";
-
-    let languageRule = "";
-
-    const teluguPattern = /[\u0C00-\u0C7F]/;
-
-    if (teluguPattern.test(lastUserMessage)) {
-      languageRule =
-        "IMPORTANT: The user's latest message is in Telugu. Reply ONLY in natural conversational Telugu.";
-    } else {
-      languageRule =
-        "IMPORTANT: The user's latest message is in English. Reply ONLY in English.";
-    }
-
-    const dynamicSystemPrompt = {
-      role: "system",
-      content: `${systemPrompt.content}
-
-${languageRule}`,
-    };
-
-    const processedMessages = [...messages];
-    if (hasImage && imageData) {
-      const lastIndex = processedMessages.length - 1;
-      if (lastIndex >= 0 && processedMessages[lastIndex].role === 'user') {
-        const originalText = processedMessages[lastIndex].content;
-        processedMessages[lastIndex] = {
+    // Format messages payload
+    const processedMessages = messages.map((m: any, idx: number) => {
+      // Attach image to the latest user message if image is provided
+      if (hasImage && imageData && idx === messages.length - 1 && m.role === 'user') {
+        return {
           role: 'user',
           content: [
-            { type: 'text', text: originalText },
-            { type: 'image_url', image_url: { url: imageData } }
-          ]
+            { type: 'text', text: typeof m.content === 'string' ? m.content : 'Analyze this image.' },
+            { type: 'image_url', image_url: { url: imageData } },
+          ],
         };
       }
-    }
+      return {
+        role: m.role === 'user' ? 'user' : 'assistant',
+        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
+      };
+    });
 
-    const payload = {
-      messages: [dynamicSystemPrompt, ...processedMessages]
-    };
-    let response;
+    const fullMessages = [systemMessage, ...processedMessages];
 
-    try {
-      if (!groqKey || groqKey === 'placeholder' || groqKey.trim() === '') {
-        throw new Error("GROQ_API_KEY_MISSING");
-      }
-      // Attempt Groq Primary
-      response = await attemptChatCompletion(payload, groqKey, 'https://api.groq.com/openai/v1', model, hasImage, maxTokens);
-    } catch (groqError: any) {
-      console.warn("Groq attempt failed, falling back to OpenRouter...", groqError?.message);
+    let responseStream: any;
 
+    // 1. Try Groq Primary
+    if (groqKey && groqKey !== 'placeholder' && groqKey.trim()) {
       try {
-        if (!openRouterKey || openRouterKey === 'placeholder' || openRouterKey.trim() === '') {
-          throw new Error("OPENROUTER_API_KEY_MISSING");
-        }
-      // Attempt OpenRouter Fallback
-        response = await attemptChatCompletion(payload, openRouterKey, 'https://openrouter.ai/api/v1', model, hasImage, maxTokens);
-      } catch (orError: any) {
-        console.warn("OpenRouter fallback failed. Activating local Core AI response engine...", orError?.message);
-        
-        // Generate intelligent fallback response stream
-        const lastMsg = processedMessages[processedMessages.length - 1]?.content || '';
-        const userQuery = typeof lastMsg === 'string' ? lastMsg : 'hello';
-        
-        let fallbackText = "Systems online. I am AI Verse, created by Lokesh. How can I assist you with your queries today?";
-        if (/hello|hi|hey/i.test(userQuery)) {
-          fallbackText = "Hello! Systems are fully operational. How can I assist you today?";
-        } else if (/who created|who built|who made/i.test(userQuery)) {
-          fallbackText = "I was created and developed by Lokesh as a next-generation AI assistant.";
-        } else if (/model|powered/i.test(userQuery)) {
-          fallbackText = "I am powered by AI Verse Core Intelligence running on Llama 3.3 70B architecture.";
-        }
-
-        const encoder = new TextEncoder();
-        const fallbackStream = new ReadableStream({
-          start(controller) {
-            controller.enqueue(encoder.encode(fallbackText));
-            controller.close();
-          }
-        });
-
-        return new Response(fallbackStream, {
-          headers: {
-            'Content-Type': 'text/plain; charset=utf-8',
-            'Cache-Control': 'no-cache',
-          },
-        });
+        responseStream = await attemptChatCompletion(
+          groqKey,
+          'https://api.groq.com/openai/v1',
+          selectedModel,
+          fullMessages,
+          temperature,
+          maxTokens,
+        );
+      } catch (groqErr: any) {
+        console.warn('Groq API attempt failed:', groqErr?.message);
       }
     }
 
-    if (!response) {
-      return NextResponse.json({ error: 'No response from AI providers' }, { status: 500 });
+    // 2. Fallback to OpenRouter if Groq failed
+    if (!responseStream && openRouterKey && openRouterKey !== 'placeholder' && openRouterKey.trim()) {
+      try {
+        const fallbackModel = hasImage
+          ? 'meta-llama/llama-3.2-11b-vision-instruct'
+          : 'meta-llama/llama-3.1-8b-instruct';
+
+        responseStream = await attemptChatCompletion(
+          openRouterKey,
+          'https://openrouter.ai/api/v1',
+          fallbackModel,
+          fullMessages,
+          temperature,
+          maxTokens,
+        );
+      } catch (orErr: any) {
+        console.warn('OpenRouter API attempt failed:', orErr?.message);
+      }
     }
 
+    // 3. If no provider is available or configured, return local smart response
+    if (!responseStream) {
+      const lastUserMsg = messages[messages.length - 1]?.content || '';
+      const text = typeof lastUserMsg === 'string' ? lastUserMsg.toLowerCase() : '';
+
+      let reply = "Systems online. I am AI Verse, created by Lokesh. How can I assist you with your project or question today?";
+      if (/who created|who built|who made/i.test(text)) {
+        reply = "I was created and developed by Lokesh as an intelligent AI workspace.";
+      } else if (/hello|hi|hey/i.test(text)) {
+        reply = "Hello! Systems are fully operational. What would you like to build or explore today?";
+      }
+
+      const encoder = new TextEncoder();
+      const localStream = new ReadableStream({
+        start(controller) {
+          controller.enqueue(encoder.encode(reply));
+          controller.close();
+        },
+      });
+
+      return new Response(localStream, {
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+      });
+    }
+
+    // Create ReadableStream from provider output
+    const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
-        const encoder = new TextEncoder();
         try {
-          for await (const chunk of response as any) {
+          for await (const chunk of responseStream as any) {
             const content = chunk.choices[0]?.delta?.content || '';
             if (content) {
               controller.enqueue(encoder.encode(content));
             }
           }
         } catch (err) {
-          console.error("Streaming error:", err);
+          console.error('Stream processing error:', err);
           controller.error(err);
         } finally {
           controller.close();
@@ -332,10 +190,10 @@ ${languageRule}`,
     });
 
   } catch (error: any) {
-    console.error('CRITICAL_API_ERROR:', error);
-    return NextResponse.json({ 
-      error: 'INTERNAL_SERVER_ERROR', 
-      message: error.message || 'An unexpected error occurred.' 
-    }, { status: 500 });
+    console.error('Chat API Error:', error);
+    return NextResponse.json(
+      { error: 'INTERNAL_SERVER_ERROR', message: error.message || 'An unexpected error occurred.' },
+      { status: 500 }
+    );
   }
 }

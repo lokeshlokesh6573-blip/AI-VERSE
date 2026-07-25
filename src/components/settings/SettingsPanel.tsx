@@ -7,24 +7,18 @@ import {
   Settings as SettingsIcon, 
   Moon, 
   Sun, 
-  Languages, 
   Cpu, 
-  ShieldAlert, 
   Trash2, 
-  User, 
-  LogOut, 
-  Download,
-  Save,
   CheckCircle2,
   AlertCircle,
   Zap,
-  Globe
+  Globe,
+  Sliders,
+  Volume2
 } from 'lucide-react';
-import { useAuth } from '@/context/AuthContext';
+import { useSettings } from '@/context/SettingsContext';
+import { AI_MODELS } from '@/types';
 import { cn } from '@/utils/cn';
-import { supabase } from '@/lib/supabase';
-import SettingsSection from './SettingsSection';
-import SettingsCard from './SettingsCard';
 
 interface SettingsPanelProps {
   isOpen: boolean;
@@ -32,277 +26,231 @@ interface SettingsPanelProps {
 }
 
 export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
-  const { profile, settings, updateSettings, signOut, user } = useAuth();
-  const [saving, setSaving] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
-
-  const handleUpdate = async (newSettings: any) => {
-    setSaving(true);
-    setSaveStatus('idle');
-    try {
-      await updateSettings(newSettings);
-      setSaveStatus('success');
-      setTimeout(() => setSaveStatus('idle'), 3000);
-    } catch (err) {
-      setSaveStatus('error');
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const clearHistory = async () => {
-     if (!confirm('Are you sure you want to delete all chat history?')) return;
-     try {
-        const { error } = await supabase.from('conversations').delete().eq('user_id', user?.id);
-        if (error) throw error;
-        alert('History purged.');
-     } catch (err) {
-        console.error(err);
-        alert('Failed to clear history.');
-     }
-  };
+  const { settings, updateSettings, resetSettings } = useSettings();
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'success'>('idle');
 
   if (!isOpen) return null;
 
+  const handleUpdate = (patch: Parameters<typeof updateSettings>[0]) => {
+    updateSettings(patch);
+    setSaveStatus('success');
+    setTimeout(() => setSaveStatus('idle'), 2000);
+  };
+
   return (
-    <div className="fixed inset-0 z-100 flex items-center justify-center p-4 sm:p-6 md:p-12">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 md:p-12">
       {/* Backdrop */}
       <motion.div 
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         onClick={onClose}
-        className="absolute inset-0 bg-black/60 backdrop-blur-md"
+        className="absolute inset-0 bg-black/70 backdrop-blur-md"
       />
 
       {/* Panel */}
       <motion.div 
-        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        initial={{ opacity: 0, scale: 0.95, y: 15 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
-        exit={{ opacity: 0, scale: 0.9, y: 20 }}
-        className="relative w-full max-w-4xl h-[85vh] bg-zinc-950 border border-white/10 rounded-[2.5rem] overflow-hidden flex flex-col shadow-[0_0_50px_-12px_rgba(220,38,38,0.3)]"
+        exit={{ opacity: 0, scale: 0.95, y: 15 }}
+        className="relative w-full max-w-3xl h-[85vh] bg-(--bg-secondary) border border-white/10 rounded-3xl overflow-hidden flex flex-col shadow-2xl z-10"
       >
-        {/* Cinematic Header */}
-        <div className="flex items-center justify-between p-8 border-b border-white/5 bg-zinc-900/20">
-          <div className="flex items-center gap-4">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-white/10 bg-white/2">
+          <div className="flex items-center gap-3">
             <div className="p-3 bg-red-600/10 rounded-2xl border border-red-500/20 text-red-500">
-              <SettingsIcon size={24} className="animate-[spin_4s_linear_infinite]" />
+              <SettingsIcon size={22} className="animate-[spin_6s_linear_infinite]" />
             </div>
             <div>
-              <h1 className="text-2xl font-black font-orbitron tracking-tighter text-white uppercase">System_Override</h1>
-              <p className="text-[9px] text-zinc-500 font-bold tracking-[0.3em] uppercase">Protocol Alpha // AI Verse v3.1</p>
+              <h1 className="text-xl font-bold font-display tracking-wide text-white">System Settings</h1>
+              <p className="text-[11px] text-white/40 font-mono uppercase tracking-widest">AI Verse Configuration</p>
             </div>
           </div>
 
-          <div className="flex items-center gap-6">
-            {/* Save Status */}
-            <AnimatePresence mode="wait">
-              {saveStatus !== 'idle' && (
+          <div className="flex items-center gap-4">
+            <AnimatePresence>
+              {saveStatus === 'success' && (
                 <motion.div 
-                  initial={{ opacity: 0, x: 20 }}
+                  initial={{ opacity: 0, x: 10 }}
                   animate={{ opacity: 1, x: 0 }}
-                  exit={{ opacity: 0, x: 20 }}
-                  className={cn(
-                    "px-3 py-1.5 rounded-full flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest border",
-                    saveStatus === 'success' ? "bg-green-500/10 text-green-400 border-green-500/20" : "bg-red-500/10 text-red-400 border-red-500/20"
-                  )}
+                  exit={{ opacity: 0, x: 10 }}
+                  className="px-3 py-1 rounded-full flex items-center gap-1.5 text-[11px] font-mono bg-green-500/10 text-green-400 border border-green-500/20"
                 >
-                  {saveStatus === 'success' ? <CheckCircle2 size={12} /> : <AlertCircle size={12} />}
-                  {saveStatus === 'success' ? 'Synced' : 'Error'}
+                  <CheckCircle2 size={13} /> Saved
                 </motion.div>
               )}
             </AnimatePresence>
 
             <button 
               onClick={onClose}
-              className="p-3 hover:bg-white/5 rounded-full transition-colors text-zinc-500 hover:text-white"
+              className="p-2.5 hover:bg-white/10 rounded-full transition-colors text-white/50 hover:text-white"
             >
-              <X size={20} />
+              <X size={18} />
             </button>
           </div>
         </div>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-8 space-y-12 scrollbar-hide">
+        <div className="flex-1 overflow-y-auto p-6 md:p-8 space-y-8 scrollbar-hide">
           
-          {/* Intelligence & Model */}
-          <SettingsSection 
-            title="Core_Intelligence" 
-            description="Neural Link Protocols"
-            icon={<Cpu size={18} />}
-          >
-            <SettingsCard 
-              title="Active Model" 
-              description="Primary neural architecture for responses."
-              icon={Zap}
-              className="md:col-span-2"
-            >
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                {[
-                  { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 (High)', provider: 'Groq' },
-                  { id: 'google/gemini-2.0-flash-001', label: 'Gemini 2.0', provider: 'OpenRouter' },
-                  { id: 'google/gemini-flash-1.5', label: 'Gemini 1.5 Flash', provider: 'OpenRouter' }
-                ].map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => handleUpdate({ model: m.id })}
-                    className={cn(
-                      "group relative p-4 rounded-2xl border text-left transition-all",
-                      settings?.model === m.id 
-                        ? "bg-red-600/10 border-red-500/50" 
-                        : "bg-zinc-900/50 border-white/5 hover:border-white/20"
+          {/* Section: AI Model Selection */}
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <Zap size={16} className="text-blue-400" />
+              <h2 className="text-sm font-bold text-white uppercase tracking-wider font-mono">Core Intelligence Model</h2>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {AI_MODELS.map((m) => (
+                <button
+                  key={m.id}
+                  onClick={() => handleUpdate({ model: m.id })}
+                  className={cn(
+                    "p-4 rounded-2xl border text-left transition-all relative",
+                    settings.model === m.id 
+                      ? "bg-blue-600/10 border-blue-500/50 shadow-lg shadow-blue-900/10" 
+                      : "bg-white/3 border-white/5 hover:border-white/15"
+                  )}
+                >
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold text-white">{m.name}</span>
+                    {m.supportsVision && (
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-mono bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                        Vision
+                      </span>
                     )}
-                  >
-                    <div className="flex flex-col">
-                      <span className={cn(
-                        "text-[10px] font-bold uppercase tracking-widest mb-1",
-                        settings?.model === m.id ? "text-red-400" : "text-zinc-500"
-                      )}>{m.provider}</span>
-                      <span className="text-xs font-black text-white">{m.label}</span>
-                    </div>
-                    {settings?.model === m.id && (
-                      <div className="absolute top-2 right-2">
-                        <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-pulse" />
-                      </div>
-                    )}
-                  </button>
-                ))}
+                  </div>
+                  <p className="text-[11px] text-white/50 leading-relaxed">{m.description}</p>
+                  {settings.model === m.id && (
+                    <div className="absolute top-3 right-3 w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Section: Generation Parameters */}
+          <div className="border-t border-white/8 pt-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Sliders size={16} className="text-purple-400" />
+              <h2 className="text-sm font-bold text-white uppercase tracking-wider font-mono">Response Parameters</h2>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+              {/* Response Style */}
+              <div className="bg-white/3 p-4 rounded-2xl border border-white/5">
+                <label className="text-xs font-semibold text-white/80 block mb-2">Response Verbosity</label>
+                <div className="flex gap-2 p-1 bg-black/40 rounded-xl border border-white/5">
+                  {(['concise', 'detailed'] as const).map((style) => (
+                    <button
+                      key={style}
+                      onClick={() => handleUpdate({ responseStyle: style })}
+                      className={cn(
+                        "flex-1 py-2 rounded-lg text-xs font-medium capitalize transition-all",
+                        settings.responseStyle === style 
+                          ? "bg-white text-black font-semibold shadow-md" 
+                          : "text-white/40 hover:text-white"
+                      )}
+                    >
+                      {style}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </SettingsCard>
 
-            <SettingsCard 
-              title="Response Protocol" 
-              description="Verbosity of agent output."
-              icon={ShieldAlert}
-            >
-              <div className="flex gap-2 p-1 bg-zinc-900/80 rounded-xl border border-white/5">
-                {['short', 'detailed'].map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => handleUpdate({ response_style: s })}
-                    className={cn(
-                      "flex-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-                      settings?.response_style === s 
-                        ? "bg-white text-black shadow-lg" 
-                        : "text-zinc-500 hover:text-white"
-                    )}
-                  >
-                    {s}
-                  </button>
-                ))}
+              {/* Temperature */}
+              <div className="bg-white/3 p-4 rounded-2xl border border-white/5">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-semibold text-white/80">Creativity (Temperature)</label>
+                  <span className="text-xs font-mono text-blue-400">{settings.temperature}</span>
+                </div>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={settings.temperature}
+                  onChange={(e) => handleUpdate({ temperature: parseFloat(e.target.value) })}
+                  className="w-full accent-blue-500 cursor-pointer"
+                />
+                <div className="flex justify-between text-[10px] text-white/30 font-mono mt-1">
+                  <span>Precise</span>
+                  <span>Creative</span>
+                </div>
               </div>
-            </SettingsCard>
+            </div>
+          </div>
 
-            <SettingsCard 
-              title="Data Purge" 
-              description="Erase all local/cloud records."
-              icon={Trash2}
-              danger
-            >
-              <button 
-                onClick={clearHistory}
-                className="w-full py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-red-600/10 text-red-500 border border-red-500/20 hover:bg-red-600 hover:text-white transition-all"
-              >
-                Clear History
-              </button>
-            </SettingsCard>
-          </SettingsSection>
+          {/* Section: Appearance & Audio */}
+          <div className="border-t border-white/8 pt-6">
+            <div className="flex items-center gap-2 mb-4">
+              <Sun size={16} className="text-amber-400" />
+              <h2 className="text-sm font-bold text-white uppercase tracking-wider font-mono">Appearance & Audio</h2>
+            </div>
 
-          {/* Appearance */}
-          <SettingsSection 
-            title="Interface" 
-            description="Visual HUD Calibration"
-            icon={<Sun size={18} />}
-          >
-            <SettingsCard 
-              title="Spectral Theme" 
-              description="System-wide color calibration."
-              icon={settings?.theme === 'dark' ? Moon : Sun}
-            >
-              <div className="flex gap-2 p-1 bg-zinc-900/80 rounded-xl border border-white/5">
-                {['dark', 'light'].map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => handleUpdate({ theme: t })}
-                    className={cn(
-                      "flex-1 py-2 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all",
-                      settings?.theme === t 
-                        ? "bg-zinc-100 text-black" 
-                        : "text-zinc-500 hover:text-white"
-                    )}
-                  >
-                    {t}
-                  </button>
-                ))}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Theme */}
+              <div className="bg-white/3 p-4 rounded-2xl border border-white/5 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white">Interface Theme</p>
+                  <p className="text-[11px] text-white/40">Dark or light aesthetic</p>
+                </div>
+                <button
+                  onClick={() => handleUpdate({ theme: settings.theme === 'dark' ? 'light' : 'dark' })}
+                  className="p-2.5 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 text-white transition-all"
+                >
+                  {settings.theme === 'dark' ? <Moon size={16} /> : <Sun size={16} />}
+                </button>
               </div>
-            </SettingsCard>
 
-            <SettingsCard 
-              title="Linguistic Link" 
-              description="Primary interaction language."
-              icon={Globe}
-            >
-              <select 
-                value={settings?.language}
-                onChange={(e) => handleUpdate({ language: e.target.value })}
-                className="w-full bg-zinc-900 border border-white/10 rounded-xl py-2.5 px-4 text-xs font-bold focus:outline-none focus:border-red-500/50 text-white appearance-none cursor-pointer"
-              >
-                <option value="en">English (US)</option>
-                <option value="te">Telugu (తెలుగు)</option>
-                <option value="hi">Hindi (हिन्दी)</option>
-              </select>
-            </SettingsCard>
-          </SettingsSection>
-
-          {/* Account */}
-          <SettingsSection 
-            title="Agent_Profile" 
-            description="Biometric Status"
-            icon={<User size={18} />}
-          >
-            <SettingsCard 
-              title="Verified Identity" 
-              description={user?.email || 'Unauthorized'}
-              icon={User}
-            >
-              <div className="flex items-center justify-between px-1">
-                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-tighter">ROLE: {profile?.role || 'User'}</span>
-                <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-tighter">STATUS: ACTIVE</span>
+              {/* Voice */}
+              <div className="bg-white/3 p-4 rounded-2xl border border-white/5 flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-white">Voice Assistant</p>
+                  <p className="text-[11px] text-white/40">Enable text-to-speech output</p>
+                </div>
+                <button
+                  onClick={() => handleUpdate({ voiceEnabled: !settings.voiceEnabled })}
+                  className={cn(
+                    "p-2.5 rounded-xl border transition-all",
+                    settings.voiceEnabled 
+                      ? "bg-blue-600/20 text-blue-400 border-blue-500/40" 
+                      : "bg-white/5 text-white/30 border-white/10"
+                  )}
+                >
+                  <Volume2 size={16} />
+                </button>
               </div>
-            </SettingsCard>
+            </div>
+          </div>
 
-            <SettingsCard 
-              title="System Actions" 
-              description="Manage cloud connectivity."
-              icon={LogOut}
+          {/* Section: Reset */}
+          <div className="border-t border-white/8 pt-6 flex justify-between items-center">
+            <div>
+              <p className="text-xs font-semibold text-white/70">Reset Preferences</p>
+              <p className="text-[11px] text-white/30">Restore all settings to default values</p>
+            </div>
+            <button
+              onClick={() => {
+                resetSettings();
+                handleUpdate({});
+              }}
+              className="px-4 py-2 bg-white/5 hover:bg-red-500/10 hover:text-red-400 border border-white/10 rounded-xl text-xs text-white/60 font-mono transition-all"
             >
-              <button 
-                onClick={signOut}
-                className="w-full py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest bg-zinc-900 border border-red-500/20 text-red-500 hover:bg-red-600 hover:text-white transition-all flex items-center justify-center gap-2"
-              >
-                <LogOut size={12} /> Logout System
-              </button>
-            </SettingsCard>
-          </SettingsSection>
+              Reset Defaults
+            </button>
+          </div>
 
         </div>
 
-        {/* Footer HUD */}
-        <div className="p-6 bg-zinc-900/40 border-t border-white/5 flex items-center justify-between">
-           <div className="flex items-center gap-3">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
-              <span className="text-[9px] text-zinc-500 font-bold uppercase tracking-[0.2em]">All Systems Nominal</span>
-           </div>
-           <div className="flex space-x-2">
-              <div className="w-12 h-1 bg-white/5 rounded-full overflow-hidden">
-                <motion.div 
-                  initial={{ x: '-100%' }}
-                  animate={{ x: '100%' }}
-                  transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
-                  className="w-full h-full bg-red-500"
-                />
-              </div>
-           </div>
+        {/* Footer */}
+        <div className="p-4 px-6 bg-white/2 border-t border-white/8 flex items-center justify-between">
+          <span className="text-[11px] text-white/30 font-mono">AI Verse v3.2 · Local Preference Storage</span>
+          <button
+            onClick={onClose}
+            className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-red-900/30"
+          >
+            Done
+          </button>
         </div>
       </motion.div>
     </div>
