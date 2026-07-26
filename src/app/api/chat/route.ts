@@ -1,9 +1,12 @@
 import { OpenAI } from 'openai';
 import { NextResponse } from 'next/server';
+import { webSearch, needsWebSearch } from '@/lib/web-search';
+import { detectModules, buildSystemPrompt, compressConversation } from '@/lib/prompts';
+import { improvePrompt } from '@/lib/prompt-engine';
+import { checkRateLimit } from '@/lib/rate-limit';
 
 export const runtime = 'edge';
 
-// Attempt completion from OpenAI-compatible provider
 async function attemptChatCompletion(
   apiKey: string,
   baseURL: string,
@@ -13,7 +16,6 @@ async function attemptChatCompletion(
   maxTokens: number = 2048,
 ) {
   const ai = new OpenAI({ apiKey, baseURL });
-
   return await ai.chat.completions.create({
     model,
     messages,
@@ -24,9 +26,18 @@ async function attemptChatCompletion(
   });
 }
 
-// Main API Handler
 export async function POST(req: Request) {
   try {
+    // ── Rate limiting ──
+    const ip = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
+    const { allowed, remaining } = checkRateLimit(ip);
+    if (!allowed) {
+      return NextResponse.json(
+        { error: 'RATE_LIMITED', message: 'Too many requests. Please wait a moment.' },
+        { status: 429 },
+      );
+    }
+
     const {
       messages = [],
       model: clientModel,
@@ -40,67 +51,71 @@ export async function POST(req: Request) {
     const groqKey = process.env.GROQ_API_KEY;
     const openRouterKey = process.env.OPENROUTER_API_KEY;
 
-    // Pick model based on vision vs standard request
     const defaultModel = hasImage
       ? 'llama-3.2-11b-vision-instruct'
       : 'llama-3.3-70b-versatile';
-
     const selectedModel = clientModel || defaultModel;
 
-    // System prompt with expert persona and language/style instructions
+    // ── Get last user message ──
+    const lastUserMsg = messages[messages.length - 1]?.content || '';
+    const lastUserText = typeof lastUserMsg === 'string' ? lastUserMsg : '';
+
+    // ── Phase 4: Auto-improve vague prompts ──
+    const improvedText = improvePrompt(lastUserText);
+
+    // ── Phase 3: Auto-detect if web search needed ──
+    let searchResults = '';
+    if (needsWebSearch(improvedText)) {
+      searchResults = await webSearch(improvedText, 5);
+    }
+
+    // ── Phase 1+2: Intent detection & modular prompts ──
+    const modules = detectModules(improvedText);
+    const hasSearchResults = searchResults.length > 0;
     const styleInstruction = responseStyle === 'concise'
-      ? 'Provide extremely direct, concise, and punchy responses without fluff.'
-      : 'Provide comprehensive, thorough, step-by-step explanations and deep insights.';
+      ? 'Be extremely direct and concise. No fluff.'
+      : 'Provide thorough, step-by-step explanations.';
 
-    const systemMessage = {
-      role: 'system',
-      content: `You are AI Verse — an intelligent, next-generation AI assistant developed by Lokesh.
+    let systemContent = buildSystemPrompt(modules, hasSearchResults);
+    systemContent += `\n\n${styleInstruction}`;
+    systemContent += `\n\nIDENTITY: If asked who created you, say "AI Verse, created by Lokesh."`;
 
-SYSTEM CAPABILITIES & PERSONA:
-- Expert in Software Engineering, Programming (TypeScript, React, Next.js, Python, C++, Java, SQL, Rust, Go), Architecture, and Debugging.
-- Expert in Mathematics, Science, Writing, Data Analysis, Research, and Technical Troubleshooting.
-- Helpful, intelligent, concise when needed, thorough when complex.
-- ${styleInstruction}
+    if (hasSearchResults) {
+      systemContent += `\n\n--- LIVE SEARCH RESULTS ---\n${searchResults}\n--- END SEARCH RESULTS ---\nUse these results to answer accurately. Cite sources.`;
+    }
 
-IDENTITY RULE:
-- If asked who created, built, or developed you: "I am AI Verse, an intelligent AI assistant created and developed by Lokesh."
+    const systemMessage = { role: 'system', content: systemContent };
 
-LANGUAGE RULES:
-- Detect the language of the user's latest message automatically.
-- Reply ONLY in the user's preferred language.
-- English message → English reply.
-- Telugu message → Natural conversational Telugu (e.g., "Em help kavali?").
-- Mixed language message → Natural mixed response matching user style.
-- Never translate automatically or output duplicate translations.
+    // ── Phase 2: Compress long conversations ──
+    const formatted = messages.map((m: any, idx: number) => {
+      const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
+      // Replace last user message with improved version
+      if (idx === messages.length - 1 && m.role === 'user') {
+        return { role: 'user' as const, content: improvedText };
+      }
+      return { role: m.role === 'user' ? 'user' as const : 'assistant' as const, content };
+    });
+    const compressed = compressConversation(formatted);
 
-CODE FORMATTING:
-- Always use Markdown code blocks with specified language tag (e.g. \`\`\`typescript ... \`\`\`).
-- Include helpful code comments and modern best practices.`,
-    };
-
-    // Format messages payload
-    const processedMessages = messages.map((m: any, idx: number) => {
-      // Attach image to the latest user message if image is provided
-      if (hasImage && imageData && idx === messages.length - 1 && m.role === 'user') {
+    // ── Attach image to last user message if present ──
+    const processed = compressed.map((m, idx) => {
+      if (hasImage && imageData && idx === compressed.length - 1 && m.role === 'user') {
         return {
           role: 'user',
           content: [
-            { type: 'text', text: typeof m.content === 'string' ? m.content : 'Analyze this image.' },
+            { type: 'text', text: m.content || 'Analyze this image.' },
             { type: 'image_url', image_url: { url: imageData } },
           ],
         };
       }
-      return {
-        role: m.role === 'user' ? 'user' : 'assistant',
-        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content),
-      };
+      return m;
     });
 
-    const fullMessages = [systemMessage, ...processedMessages];
+    const fullMessages = [systemMessage, ...processed];
 
+    // ── Provider chain: Groq → OpenRouter → Local fallback ──
     let responseStream: any;
 
-    // 1. Try Groq Primary
     if (groqKey && groqKey !== 'placeholder' && groqKey.trim()) {
       try {
         responseStream = await attemptChatCompletion(
@@ -112,17 +127,15 @@ CODE FORMATTING:
           maxTokens,
         );
       } catch (groqErr: any) {
-        console.warn('Groq API attempt failed:', groqErr?.message);
+        console.warn('Groq failed:', groqErr?.message);
       }
     }
 
-    // 2. Fallback to OpenRouter if Groq failed
     if (!responseStream && openRouterKey && openRouterKey !== 'placeholder' && openRouterKey.trim()) {
       try {
         const fallbackModel = hasImage
           ? 'meta-llama/llama-3.2-11b-vision-instruct'
           : 'meta-llama/llama-3.1-8b-instruct';
-
         responseStream = await attemptChatCompletion(
           openRouterKey,
           'https://openrouter.ai/api/v1',
@@ -132,48 +145,46 @@ CODE FORMATTING:
           maxTokens,
         );
       } catch (orErr: any) {
-        console.warn('OpenRouter API attempt failed:', orErr?.message);
+        console.warn('OpenRouter failed:', orErr?.message);
       }
     }
 
-    // 3. If no provider is available or configured, return local smart response
+    // ── Local fallback ──
     if (!responseStream) {
-      const lastUserMsg = messages[messages.length - 1]?.content || '';
-      const text = typeof lastUserMsg === 'string' ? lastUserMsg.toLowerCase() : '';
+      const text = lastUserText.toLowerCase();
+      let reply = "Systems online. I am AI Verse, created by Lokesh. How can I assist you?";
 
-      let reply = "Systems online. I am AI Verse, created by Lokesh. How can I assist you with your project or question today?";
       if (/who created|who built|who made/i.test(text)) {
-        reply = "I was created and developed by Lokesh as an intelligent AI workspace.";
+        reply = "I was created and developed by Lokesh.";
       } else if (/hello|hi|hey/i.test(text)) {
-        reply = "Hello! Systems are fully operational. What would you like to build or explore today?";
+        reply = "Hello! What would you like to explore today?";
+      } else if (needsWebSearch(text)) {
+        reply = "I need an API key configured to search the web. Please add GOOGLE_SEARCH_API_KEY to your environment.";
       }
 
       const encoder = new TextEncoder();
-      const localStream = new ReadableStream({
-        start(controller) {
-          controller.enqueue(encoder.encode(reply));
-          controller.close();
-        },
-      });
-
-      return new Response(localStream, {
-        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
-      });
+      return new Response(
+        new ReadableStream({
+          start(controller) {
+            controller.enqueue(encoder.encode(reply));
+            controller.close();
+          },
+        }),
+        { headers: { 'Content-Type': 'text/plain; charset=utf-8' } },
+      );
     }
 
-    // Create ReadableStream from provider output
+    // ── Stream response ──
     const encoder = new TextEncoder();
     const stream = new ReadableStream({
       async start(controller) {
         try {
           for await (const chunk of responseStream as any) {
             const content = chunk.choices[0]?.delta?.content || '';
-            if (content) {
-              controller.enqueue(encoder.encode(content));
-            }
+            if (content) controller.enqueue(encoder.encode(content));
           }
         } catch (err) {
-          console.error('Stream processing error:', err);
+          console.error('Stream error:', err);
           controller.error(err);
         } finally {
           controller.close();
@@ -192,8 +203,8 @@ CODE FORMATTING:
   } catch (error: any) {
     console.error('Chat API Error:', error);
     return NextResponse.json(
-      { error: 'INTERNAL_SERVER_ERROR', message: error.message || 'An unexpected error occurred.' },
-      { status: 500 }
+      { error: 'INTERNAL_SERVER_ERROR', message: error.message || 'Unexpected error.' },
+      { status: 500 },
     );
   }
 }

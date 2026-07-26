@@ -4,11 +4,13 @@ import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Send, Mic, MicOff, Paperclip, Settings, StopCircle,
-  Copy, Check, RefreshCw, ChevronDown, Globe, X,
-  Camera, Sun, Moon, Cpu, Trash2, RotateCcw
+  Copy, Check, RefreshCw, ChevronDown, X,
+  Camera, Sun, Moon, Cpu, Trash2, ThumbsUp, ThumbsDown,
+  Volume2, VolumeX, Edit2, Sparkles, Code, PenTool, BarChart2, Search
 } from 'lucide-react';
 import { useSettings } from '@/context/SettingsContext';
 import { getVoiceAssistant } from '@/lib/voice-assistant';
+import { saveMessages, loadMessages, clearMessages as clearStorage } from '@/lib/storage';
 import MarkdownRenderer from '@/components/ui/MarkdownRenderer';
 import type { Message, FileAttachment } from '@/types';
 import dynamic from 'next/dynamic';
@@ -16,25 +18,33 @@ import { useRouter } from 'next/navigation';
 
 const DynamicCameraVision = dynamic(() => import('@/components/CameraVision'), { ssr: false });
 
-// ─── Welcome suggestions ──────────────────────────────────────────────────────
-const SUGGESTIONS = [
-  { icon: '💻', text: 'Debug my React code', category: 'Code' },
-  { icon: '🔍', text: 'Explain a complex algorithm', category: 'Learn' },
-  { icon: '✍️', text: 'Help me write an essay', category: 'Write' },
-  { icon: '📊', text: 'Analyze this data for me', category: 'Data' },
-  { icon: '🌐', text: 'Search latest AI news', category: 'Research' },
-  { icon: '🧮', text: 'Solve a math problem', category: 'Math' },
+// ─── Minimal Welcome Suggestion Chips ──────────────────────────────────────
+const WELCOME_SUGGESTIONS = [
+  { icon: Code, label: 'Debug React code', query: 'Help me debug a React component with async state management issues.' },
+  { icon: PenTool, label: 'Write & edit content', query: 'Help me draft a compelling technical blog post about AI agents.' },
+  { icon: BarChart2, label: 'Analyze complex data', query: 'How can I analyze and plot multi-dimensional CSV data in Python?' },
+  { icon: Search, label: 'Research AI trends', query: 'Summarize the top current trends in generative AI models for 2026.' },
 ];
 
-// ─── Message action buttons ───────────────────────────────────────────────────
-function MessageActions({
+// ─── Assistant Message Action Toolbar ───────────────────────────────────────
+function AssistantMessageActions({
   message,
+  isLastAI,
   onRegenerate,
   onSpeak,
+  isSpeaking,
+  likedState,
+  onLike,
+  onDislike,
 }: {
   message: Message;
+  isLastAI: boolean;
   onRegenerate?: () => void;
-  onSpeak?: () => void;
+  onSpeak: () => void;
+  isSpeaking: boolean;
+  likedState?: 'like' | 'dislike';
+  onLike: () => void;
+  onDislike: () => void;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -45,43 +55,95 @@ function MessageActions({
   };
 
   return (
-    <div className="flex items-center gap-1 mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+    <div className="flex items-center gap-1 mt-2.5 opacity-80 group-hover:opacity-100 transition-opacity">
+      {/* Copy */}
       <button
         onClick={handleCopy}
-        className="p-1.5 rounded-lg text-white/30 hover:text-white/70 hover:bg-white/8 transition-all"
-        title="Copy"
+        className="p-1.5 rounded-md text-white/40 hover:text-white hover:bg-white/10 transition-all cursor-pointer min-h-8 min-w-8 flex items-center justify-center"
+        title="Copy response"
       >
-        {copied ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
+        {copied ? <Check size={14} className="text-green-400" /> : <Copy size={14} />}
       </button>
-      {onRegenerate && (
+
+      {/* Like */}
+      <button
+        onClick={onLike}
+        className={`p-1.5 rounded-md transition-all cursor-pointer min-h-8 min-w-8 flex items-center justify-center ${likedState === 'like' ? 'text-green-400 bg-green-500/10' : 'text-white/40 hover:text-white hover:bg-white/10'
+          }`}
+        title="Good response"
+      >
+        <ThumbsUp size={14} />
+      </button>
+
+      {/* Dislike */}
+      <button
+        onClick={onDislike}
+        className={`p-1.5 rounded-md transition-all cursor-pointer min-h-8 min-w-8 flex items-center justify-center ${likedState === 'dislike' ? 'text-red-400 bg-red-500/10' : 'text-white/40 hover:text-white hover:bg-white/10'
+          }`}
+        title="Bad response"
+      >
+        <ThumbsDown size={14} />
+      </button>
+
+      {/* Read Aloud */}
+      <button
+        onClick={onSpeak}
+        className={`p-1.5 rounded-md transition-all cursor-pointer min-h-8 min-w-8 flex items-center justify-center ${isSpeaking ? 'text-red-400 bg-red-500/15 animate-pulse' : 'text-white/40 hover:text-white hover:bg-white/10'
+          }`}
+        title={isSpeaking ? 'Stop speaking' : 'Read aloud'}
+      >
+        {isSpeaking ? <VolumeX size={14} /> : <Volume2 size={14} />}
+      </button>
+
+      {/* Regenerate */}
+      {isLastAI && onRegenerate && (
         <button
           onClick={onRegenerate}
-          className="p-1.5 rounded-lg text-white/30 hover:text-white/70 hover:bg-white/8 transition-all"
-          title="Regenerate"
+          className="p-1.5 rounded-md text-white/40 hover:text-white hover:bg-white/10 transition-all cursor-pointer min-h-8 min-w-8 flex items-center justify-center"
+          title="Regenerate response"
         >
-          <RefreshCw size={13} />
+          <RefreshCw size={14} />
         </button>
       )}
     </div>
   );
 }
 
-// ─── Typing indicator ─────────────────────────────────────────────────────────
-function TypingIndicator() {
+// ─── User Message Action Toolbar ───────────────────────────────────────────
+function UserMessageActions({
+  message,
+  onEdit,
+}: {
+  message: Message;
+  onEdit: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(message.content);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
   return (
-    <div className="flex items-center gap-2 py-3 px-4">
-      <div className="flex items-center gap-1.5">
-        {[0, 1, 2].map(i => (
-          <div
-            key={i}
-            className="w-2 h-2 rounded-full bg-blue-400 typing-dot"
-            style={{ animationDelay: `${i * 0.2}s` }}
-          />
-        ))}
-      </div>
-      <span className="text-[11px] text-white/40 font-mono uppercase tracking-wider">
-        AI Verse is thinking...
-      </span>
+    <div className="flex items-center gap-1 mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity justify-end">
+      {/* Edit */}
+      <button
+        onClick={onEdit}
+        className="p-1.5 rounded-md text-white/40 hover:text-white hover:bg-white/10 transition-all cursor-pointer min-h-8 min-w-8 flex items-center justify-center"
+        title="Edit message"
+      >
+        <Edit2 size={13} />
+      </button>
+
+      {/* Copy */}
+      <button
+        onClick={handleCopy}
+        className="p-1.5 rounded-md text-white/40 hover:text-white hover:bg-white/10 transition-all cursor-pointer min-h-8 min-w-8 flex items-center justify-center"
+        title="Copy message"
+      >
+        {copied ? <Check size={13} className="text-green-400" /> : <Copy size={13} />}
+      </button>
     </div>
   );
 }
@@ -98,13 +160,15 @@ function ChatHeader({
 }) {
   const router = useRouter();
   return (
-    <div className="h-14 px-4 md:px-6 flex items-center justify-between border-b border-white/8 bg-(--bg-secondary)/50 backdrop-blur-xl shrink-0 z-30">
+    <header className="h-14 px-4 md:px-6 flex items-center justify-between border-b border-white/8 bg-(--bg-secondary)/60 backdrop-blur-xl shrink-0 z-30">
       <div className="flex items-center gap-3">
-        <div className="w-8 h-8 rounded-lg bg-linear-to-br from-red-600 to-red-800 flex items-center justify-center shadow-lg">
-          <Cpu size={14} className="text-white" />
+        <div className="w-8 h-8 rounded-xl bg-linear-to-br from-red-600 to-red-800 flex items-center justify-center shadow-md shadow-red-950/40 border border-red-500/30">
+          <Cpu size={15} className="text-white" />
         </div>
         <div>
-          <h1 className="text-sm font-bold text-white tracking-wide font-display">AI VERSE</h1>
+          <h1 className="text-sm font-bold text-white tracking-widest font-display flex items-center gap-2">
+            AI VERSE
+          </h1>
           <div className="flex items-center gap-1.5">
             <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
             <span className="text-[10px] text-white/40 uppercase tracking-widest font-mono">Online</span>
@@ -112,34 +176,34 @@ function ChatHeader({
         </div>
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1">
         <button
           onClick={onClear}
-          className="p-2 rounded-lg text-white/40 hover:text-white/80 hover:bg-white/8 transition-all"
-          title="Clear chat"
+          className="p-2 rounded-xl text-white/40 hover:text-white hover:bg-white/8 transition-all cursor-pointer min-h-10 min-w-10 flex items-center justify-center"
+          title="Clear conversation"
         >
-          <Trash2 size={15} />
+          <Trash2 size={16} />
         </button>
         <button
           onClick={onToggleTheme}
-          className="p-2 rounded-lg text-white/40 hover:text-white/80 hover:bg-white/8 transition-all"
+          className="p-2 rounded-xl text-white/40 hover:text-white hover:bg-white/8 transition-all cursor-pointer min-h-10 min-w-10 flex items-center justify-center"
           title="Toggle theme"
         >
-          {theme === 'dark' ? <Sun size={15} /> : <Moon size={15} />}
+          {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
         </button>
         <button
           onClick={() => router.push('/settings')}
-          className="p-2 rounded-lg text-white/40 hover:text-white/80 hover:bg-white/8 transition-all"
+          className="p-2 rounded-xl text-white/40 hover:text-white hover:bg-white/8 transition-all cursor-pointer min-h-10 min-w-10 flex items-center justify-center"
           title="Settings"
         >
-          <Settings size={15} />
+          <Settings size={16} />
         </button>
       </div>
-    </div>
+    </header>
   );
 }
 
-// ─── File attachment preview ──────────────────────────────────────────────────
+// ─── File Attachment Preview Pill ──────────────────────────────────────────────
 function AttachmentPreview({
   attachment,
   onRemove,
@@ -148,15 +212,18 @@ function AttachmentPreview({
   onRemove: () => void;
 }) {
   return (
-    <div className="flex items-center gap-2 px-3 py-2 bg-white/8 rounded-xl border border-white/10 max-w-xs">
-      <div className="w-7 h-7 rounded-lg bg-blue-600/30 flex items-center justify-center shrink-0">
+    <div className="flex items-center gap-2.5 px-3.5 py-2 bg-white/8 rounded-2xl border border-white/12 max-w-xs shadow-lg backdrop-blur-md">
+      <div className="w-7 h-7 rounded-lg bg-red-600/30 border border-red-500/30 flex items-center justify-center shrink-0 text-xs">
         {attachment.type === 'image' ? '🖼️' : '📄'}
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-xs font-semibold text-white/90 truncate">{attachment.name}</p>
-        <p className="text-[10px] text-white/40 capitalize">{attachment.type}</p>
+        <p className="text-xs font-medium text-white/90 truncate">{attachment.name}</p>
+        <p className="text-[10px] text-white/40 uppercase tracking-wider">{attachment.type}</p>
       </div>
-      <button onClick={onRemove} className="text-white/30 hover:text-red-400 transition-colors shrink-0">
+      <button
+        onClick={onRemove}
+        className="text-white/40 hover:text-red-400 transition-colors shrink-0 p-1 rounded-full hover:bg-white/10 cursor-pointer"
+      >
         <X size={14} />
       </button>
     </div>
@@ -170,30 +237,13 @@ interface ChatInterfaceProps {
   onListeningChange?: (v: boolean) => void;
 }
 
-const WELCOME_MSG: Message = {
-  id: 'welcome',
-  role: 'assistant',
-  content: `Hello! I'm **AI Verse** — your intelligent AI workspace created by Lokesh. I can help you with:
-
-- 💻 **Programming** — code generation, debugging, review
-- ✍️ **Writing** — essays, emails, creative content
-- 🔬 **Research** — analysis, explanations, summaries
-- 📊 **Data** — CSV analysis, statistics, charts
-- 🌐 **Web Search** — real-time information
-- 🖼️ **Vision** — image understanding, OCR
-- 🎙️ **Voice** — speak to me naturally
-
-What can I help you with today?`,
-  timestamp: new Date(),
-};
-
 export default function ChatInterface({
   onLoadingChange,
   onTalkingChange,
   onListeningChange,
 }: ChatInterfaceProps) {
   const { settings, updateSettings } = useSettings();
-  const [messages, setMessages] = useState<Message[]>([WELCOME_MSG]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
@@ -202,10 +252,27 @@ export default function ChatInterface({
   const [showScrollBtn, setShowScrollBtn] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
 
+  // Additional action states
+  const [likedMessages, setLikedMessages] = useState<Record<string, 'like' | 'dislike'>>({});
+  const [speakingId, setSpeakingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editInput, setEditInput] = useState('');
+
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const voiceRef = useRef(typeof window !== 'undefined' ? getVoiceAssistant() : null);
+
+  // Load saved messages on mount
+  useEffect(() => {
+    const saved = loadMessages();
+    if (saved.length > 0) setMessages(saved);
+  }, []);
+
+  // Persist messages on change
+  useEffect(() => {
+    if (messages.length > 0) saveMessages(messages);
+  }, [messages]);
 
   // Auto-scroll
   const scrollToBottom = useCallback((smooth = true) => {
@@ -221,7 +288,7 @@ export default function ChatInterface({
     scrollToBottom();
   }, [messages, scrollToBottom]);
 
-  // Show/hide scroll-to-bottom button
+  // Handle scroll detection
   const handleScroll = () => {
     if (!scrollRef.current) return;
     const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
@@ -232,7 +299,7 @@ export default function ChatInterface({
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
-      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 150) + 'px';
+      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 180) + 'px';
     }
   }, [input]);
 
@@ -244,6 +311,9 @@ export default function ChatInterface({
 
     // Clear input immediately
     setInput('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
     const currentAttachment = attachment;
     setAttachment(null);
 
@@ -271,7 +341,7 @@ export default function ChatInterface({
     setAbortController(ctrl);
 
     try {
-      // Build messages payload — limit history to last 20 to reduce tokens
+      // Build messages payload
       const historySlice = messages.slice(-20);
       const payloadMessages = [
         ...historySlice.map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content })),
@@ -314,14 +384,13 @@ export default function ChatInterface({
         }
       }
 
-      // Finalize
+      // Finalize streaming
       setMessages(prev =>
         prev.map(m => m.id === aiId ? { ...m, content: accum, isStreaming: false } : m)
       );
 
     } catch (err: any) {
       if (err.name === 'AbortError') {
-        // Stopped by user — finalize whatever was accumulated
         setMessages(prev =>
           prev.map(m => m.id === aiId ? { ...m, isStreaming: false } : m)
         );
@@ -350,10 +419,8 @@ export default function ChatInterface({
 
   // ── Regenerate last AI response ─────────────────────────────────────────────
   const handleRegenerate = useCallback(() => {
-    // Find last user message
     const lastUserMsg = [...messages].reverse().find(m => m.role === 'user');
     if (!lastUserMsg) return;
-    // Remove last AI message and resend
     setMessages(prev => {
       const withoutLastAI = [...prev];
       for (let i = withoutLastAI.length - 1; i >= 0; i--) {
@@ -366,6 +433,52 @@ export default function ChatInterface({
     });
     setTimeout(() => handleSend(lastUserMsg.content), 50);
   }, [messages, handleSend]);
+
+  // ── Read Aloud / Speech ─────────────────────────────────────────────────────
+  const handleSpeak = useCallback((msgId: string, text: string) => {
+    if (speakingId === msgId) {
+      voiceRef.current?.stopSpeaking();
+      setSpeakingId(null);
+      onTalkingChange?.(false);
+    } else {
+      voiceRef.current?.stopSpeaking();
+      setSpeakingId(msgId);
+      onTalkingChange?.(true);
+      voiceRef.current?.speak(text);
+    }
+  }, [speakingId, onTalkingChange]);
+
+  // ── Like / Dislike ──────────────────────────────────────────────────────────
+  const handleLikeToggle = (id: string, type: 'like' | 'dislike') => {
+    setLikedMessages(prev => ({
+      ...prev,
+      [id]: prev[id] === type ? (undefined as any) : type,
+    }));
+  };
+
+  // ── Edit user message ───────────────────────────────────────────────────────
+  const startEditUserMsg = (msg: Message) => {
+    setEditingId(msg.id);
+    setEditInput(msg.content);
+  };
+
+  const saveEditUserMsg = (msgId: string) => {
+    const trimmed = editInput.trim();
+    if (!trimmed) return;
+
+    // Find index of edited message
+    const msgIndex = messages.findIndex(m => m.id === msgId);
+    if (msgIndex === -1) return;
+
+    // Truncate message history up to this message
+    const updatedHistory = messages.slice(0, msgIndex);
+    setMessages(updatedHistory);
+    setEditingId(null);
+    setEditInput('');
+
+    // Trigger send with edited text
+    setTimeout(() => handleSend(trimmed), 50);
+  };
 
   // ── Voice input ─────────────────────────────────────────────────────────────
   const handleVoice = useCallback(() => {
@@ -428,9 +541,13 @@ export default function ChatInterface({
 
   // ── Clear chat ──────────────────────────────────────────────────────────────
   const handleClear = useCallback(() => {
-    setMessages([WELCOME_MSG]);
+    setMessages([]);
     setAttachment(null);
     setInput('');
+    setEditingId(null);
+    voiceRef.current?.stopSpeaking();
+    setSpeakingId(null);
+    clearStorage();
   }, []);
 
   // ── Theme toggle ────────────────────────────────────────────────────────────
@@ -447,7 +564,7 @@ export default function ChatInterface({
   };
 
   return (
-    <div className="flex flex-col h-full w-full">
+    <div className="flex flex-col h-full w-full overflow-x-hidden relative">
       {/* Header */}
       <ChatHeader
         onClear={handleClear}
@@ -455,144 +572,170 @@ export default function ChatInterface({
         theme={settings.theme}
       />
 
-      {/* Messages area */}
+      {/* Messages / Welcome Area */}
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto chat-scroll px-4 md:px-6 py-6 space-y-6"
+        className="flex-1 overflow-y-auto chat-scroll px-4 md:px-6 py-6 md:py-8 space-y-6 md:space-y-8"
       >
-        {/* Welcome suggestions */}
-        {messages.length === 1 && messages[0].id === 'welcome' && (
+        {/* Welcome Screen (Display ONLY "How can I help you today?") */}
+        {messages.length === 0 && (
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="max-w-3xl mx-auto mt-4"
+            transition={{ duration: 0.5 }}
+            className="max-w-4xl mx-auto min-h-[60vh] flex flex-col items-center justify-center text-center px-4"
           >
-            {/* Welcome message */}
-            <div className="mb-8">
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-linear-to-br from-red-600 to-red-800 flex items-center justify-center shrink-0 mt-0.5 shadow-lg">
-                  <Cpu size={14} className="text-white" />
-                </div>
-                <div className="glass rounded-2xl rounded-tl-sm px-5 py-4 max-w-2xl">
-                  <MarkdownRenderer content={WELCOME_MSG.content} />
-                </div>
+            {/* Brand icon / glowing core badge */}
+            <div className="mb-6 relative">
+              <div className="w-16 h-16 rounded-2xl bg-linear-to-br from-red-600 to-red-800 flex items-center justify-center shadow-[0_0_40px_rgba(230,36,41,0.4)] border border-red-500/30">
+                <Sparkles size={30} className="text-white animate-pulse" />
               </div>
             </div>
 
-            {/* Suggestion grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {SUGGESTIONS.map((s, i) => (
-                <motion.button
-                  key={i}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.4 + i * 0.05 }}
-                  onClick={() => handleSend(s.text)}
-                  className="glass rounded-xl p-3 text-left hover:border-blue-500/30 hover:bg-white/8 transition-all group"
-                >
-                  <div className="text-lg mb-1">{s.icon}</div>
-                  <p className="text-xs font-medium text-white/80 group-hover:text-white transition-colors leading-snug">
-                    {s.text}
-                  </p>
-                  <p className="text-[10px] text-white/30 mt-0.5 uppercase tracking-wide">{s.category}</p>
-                </motion.button>
-              ))}
+            {/* ONLY display "How can I help you today?" as required */}
+            <h2 className="text-2xl md:text-4xl font-extrabold text-white tracking-tight mb-8">
+              How can I help you today?
+            </h2>
+
+            {/* Minimal suggestion chips */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full max-w-2xl">
+              {WELCOME_SUGGESTIONS.map((s, i) => {
+                const IconComponent = s.icon;
+                return (
+                  <motion.button
+                    key={i}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.1 * i, duration: 0.3 }}
+                    onClick={() => handleSend(s.query)}
+                    className="p-4 rounded-2xl glass hover:bg-white/10 hover:border-red-500/40 text-left transition-all group flex items-start gap-3.5 border border-white/8 cursor-pointer shadow-lg"
+                  >
+                    <div className="p-2 rounded-xl bg-red-600/15 border border-red-500/20 text-red-400 group-hover:text-white group-hover:bg-red-600 transition-colors shrink-0">
+                      <IconComponent size={18} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-white/90 group-hover:text-white transition-colors">
+                        {s.label}
+                      </p>
+                      <p className="text-xs text-white/40 line-clamp-1 mt-0.5">
+                        {s.query}
+                      </p>
+                    </div>
+                  </motion.button>
+                );
+              })}
             </div>
           </motion.div>
         )}
 
-        {/* Messages */}
-        {messages
-          .filter(m => m.id !== 'welcome' || messages.length > 1)
-          .map((msg, idx) => {
+        {/* Message Feed */}
+        {messages.map((msg, idx) => {
           const isUser = msg.role === 'user';
           const isLastAI = !isUser && idx === messages.length - 1;
 
           return (
             <motion.div
               key={msg.id}
-              initial={{ opacity: 0, y: 10 }}
+              initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3 }}
-              className={`max-w-3xl mx-auto flex ${isUser ? 'justify-end' : 'justify-start'} group`}
+              className={`max-w-4xl mx-auto flex ${isUser ? 'justify-end' : 'justify-start'} group`}
             >
+              {/* AI Avatar badge */}
               {!isUser && (
-                <div className="w-8 h-8 rounded-lg bg-linear-to-br from-red-600 to-red-800 flex items-center justify-center shrink-0 mt-0.5 mr-3 shadow-md">
-                  <Cpu size={13} className="text-white" />
+                <div className="w-8 h-8 rounded-xl bg-linear-to-br from-red-600 to-red-800 flex items-center justify-center shrink-0 mt-1 mr-3.5 shadow-md shadow-red-950/40 border border-red-500/30">
+                  <Cpu size={15} className="text-white" />
                 </div>
               )}
 
-              <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[85%] md:max-w-[75%]`}>
-                {/* Attachment preview (in user message) */}
+              {/* Message Content Container */}
+              <div className={`flex flex-col ${isUser ? 'items-end' : 'items-start'} max-w-[88%] md:max-w-[80%]`}>
+                {/* User Attachment preview */}
                 {isUser && msg.attachment && (
                   <div className="mb-2">
                     {msg.attachment.type === 'image' ? (
                       <img
                         src={msg.attachment.data}
                         alt={msg.attachment.name}
-                        className="rounded-xl max-w-xs border border-white/10 shadow-lg"
+                        className="rounded-2xl max-w-xs border border-white/12 shadow-xl"
                       />
                     ) : (
-                      <div className="flex items-center gap-2 px-3 py-2 bg-white/8 rounded-xl border border-white/10 text-xs text-white/60">
+                      <div className="flex items-center gap-2 px-3.5 py-2 bg-white/8 rounded-xl border border-white/10 text-xs text-white/80 backdrop-blur-md">
                         📄 {msg.attachment.name}
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* Message bubble */}
-                <div
-                  className={`rounded-2xl px-4 py-3 ${
-                    isUser
-                      ? 'bg-linear-to-br from-red-600 to-red-700 text-white rounded-tr-sm shadow-lg shadow-red-900/20'
-                      : 'glass rounded-tl-sm'
-                  } ${msg.isError ? 'border-red-500/30 bg-red-900/10' : ''}`}
-                >
-                  {isUser ? (
-                    <p className="text-sm leading-relaxed whitespace-pre-wrap">{msg.content}</p>
-                  ) : msg.content ? (
-                    <MarkdownRenderer content={msg.content} isStreaming={msg.isStreaming} />
-                  ) : msg.isStreaming ? null : (
-                    <p className="text-white/40 text-sm italic">Empty response</p>
-                  )}
+                {/* Inline Editing for User Message */}
+                {isUser && editingId === msg.id ? (
+                  <div className="w-full bg-[#12121a] border border-red-500/40 rounded-2xl p-3 shadow-2xl">
+                    <textarea
+                      value={editInput}
+                      onChange={e => setEditInput(e.target.value)}
+                      className="w-full bg-transparent text-white text-sm outline-none resize-none min-h-20"
+                    />
+                    <div className="flex justify-end gap-2 mt-2">
+                      <button
+                        onClick={() => setEditingId(null)}
+                        className="px-3 py-1.5 text-xs text-white/50 hover:text-white rounded-lg transition-colors cursor-pointer"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => saveEditUserMsg(msg.id)}
+                        className="px-3.5 py-1.5 text-xs font-semibold bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors cursor-pointer shadow-md"
+                      >
+                        Save & Resend
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* Standard Message Bubble / Clean layout */
+                  <div
+                    className={`${isUser
+                      ? 'bg-linear-to-r from-red-600 to-red-700 text-white rounded-2xl rounded-tr-sm px-4 md:px-5 py-3 shadow-lg shadow-red-950/30 border border-red-500/20 text-sm md:text-[15px]'
+                      : 'w-full py-1 text-white/90'
+                      } ${msg.isError ? 'border-red-500/50 bg-red-950/20 p-4 rounded-2xl' : ''}`}
+                  >
+                    {isUser ? (
+                      <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                    ) : msg.content ? (
+                      <MarkdownRenderer content={msg.content} isStreaming={msg.isStreaming} />
+                    ) : msg.isStreaming ? null : (
+                      <p className="text-white/40 text-sm italic">Empty response</p>
+                    )}
+                  </div>
+                )}
 
-                  {/* Typing indicator inside bubble */}
-                  {!isUser && msg.isStreaming && !msg.content && <TypingIndicator />}
-                </div>
-
-                {/* Timestamp */}
-                <p className="text-[10px] text-white/20 mt-1 px-1">
-                  {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                </p>
-
-                {/* Action buttons for AI messages */}
-                {!isUser && !msg.isStreaming && (
-                  <MessageActions
+                {/* Actions Bar & Timestamp */}
+                {!isUser && !msg.isStreaming && msg.content && (
+                  <AssistantMessageActions
                     message={msg}
-                    onRegenerate={isLastAI ? handleRegenerate : undefined}
+                    isLastAI={isLastAI}
+                    onRegenerate={handleRegenerate}
+                    onSpeak={() => handleSpeak(msg.id, msg.content)}
+                    isSpeaking={speakingId === msg.id}
+                    likedState={likedMessages[msg.id]}
+                    onLike={() => handleLikeToggle(msg.id, 'like')}
+                    onDislike={() => handleLikeToggle(msg.id, 'dislike')}
+                  />
+                )}
+
+                {isUser && editingId !== msg.id && (
+                  <UserMessageActions
+                    message={msg}
+                    onEdit={() => startEditUserMsg(msg)}
                   />
                 )}
               </div>
             </motion.div>
           );
         })}
-
-        {/* Standalone typing indicator when loading starts */}
-        {isLoading && messages[messages.length - 1]?.role !== 'assistant' && (
-          <div className="max-w-3xl mx-auto flex justify-start">
-            <div className="w-8 h-8 rounded-lg bg-linear-to-br from-red-600 to-red-800 flex items-center justify-center mr-3 mt-0.5">
-              <Cpu size={13} className="text-white" />
-            </div>
-            <div className="glass rounded-2xl rounded-tl-sm px-4 py-3">
-              <TypingIndicator />
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Scroll to bottom */}
+      {/* Scroll to Bottom Button */}
       <AnimatePresence>
         {showScrollBtn && (
           <motion.button
@@ -600,14 +743,14 @@ export default function ChatInterface({
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
             onClick={() => scrollToBottom()}
-            className="absolute bottom-28 right-6 p-2.5 glass rounded-full shadow-xl text-white/60 hover:text-white transition-all z-20"
+            className="absolute bottom-28 right-6 p-3 glass rounded-full shadow-2xl text-white/70 hover:text-white transition-all z-20 cursor-pointer border border-white/10 hover:border-red-500/40"
           >
-            <ChevronDown size={16} />
+            <ChevronDown size={18} />
           </motion.button>
         )}
       </AnimatePresence>
 
-      {/* Camera vision */}
+      {/* Dynamic Camera Vision Modal */}
       <AnimatePresence>
         {showCamera && (
           <DynamicCameraVision
@@ -618,26 +761,26 @@ export default function ChatInterface({
         )}
       </AnimatePresence>
 
-      {/* Input area */}
-      <div className="shrink-0 px-4 md:px-6 pb-5 pt-3 bg-linear-to-t from-(--bg) via-(--bg) to-transparent">
-        {/* Attachment preview */}
+      {/* Floating Redesigned Input Bar Container */}
+      <div className="shrink-0 max-w-4xl w-full mx-auto px-4 md:px-6 sticky bottom-0 z-30 pb-4 md:pb-6 pt-2">
+        {/* Attachment preview capsule above input */}
         <AnimatePresence>
           {attachment && (
             <motion.div
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: 8 }}
-              className="mb-3 max-w-3xl mx-auto"
+              className="mb-2.5"
             >
               <AttachmentPreview attachment={attachment} onRemove={() => setAttachment(null)} />
             </motion.div>
           )}
         </AnimatePresence>
 
-        {/* Input bar */}
-        <div className="max-w-3xl mx-auto input-bar">
-          <div className="flex items-end gap-1 p-2">
-            {/* Left tools */}
+        {/* Floating Capsule Bar */}
+        <div className="w-full bg-[#0c0c12]/90 backdrop-blur-2xl border border-white/12 rounded-3xl p-2 md:p-2.5 shadow-[0_10px_40px_rgba(0,0,0,0.6)] focus-within:border-red-500/50 focus-within:shadow-[0_0_30px_rgba(230,36,41,0.25)] transition-all">
+          <div className="flex items-end gap-1.5">
+            {/* Left Action Buttons (Attachment & Camera) */}
             <div className="flex items-center gap-0.5 shrink-0 pb-1">
               <input
                 ref={fileInputRef}
@@ -648,73 +791,71 @@ export default function ChatInterface({
               />
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="p-2.5 rounded-xl text-white/40 hover:text-white/80 hover:bg-white/8 transition-all"
+                className="p-2.5 rounded-2xl text-white/50 hover:text-white hover:bg-white/10 transition-all cursor-pointer min-h-11 min-w-11 flex items-center justify-center"
                 title="Attach file"
               >
-                <Paperclip size={17} />
+                <Paperclip size={18} />
               </button>
               <button
                 onClick={() => setShowCamera(true)}
-                className="p-2.5 rounded-xl text-white/40 hover:text-white/80 hover:bg-white/8 transition-all"
+                className="p-2.5 rounded-2xl text-white/50 hover:text-white hover:bg-white/10 transition-all cursor-pointer min-h-11 min-w-11 flex items-center justify-center"
                 title="Camera / Vision"
               >
-                <Camera size={17} />
+                <Camera size={18} />
               </button>
             </div>
 
-            {/* Textarea */}
+            {/* Auto-expanding Input Area */}
             <textarea
               ref={textareaRef}
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               disabled={isLoading}
-              placeholder="Ask me anything... (Shift+Enter for newline)"
+              placeholder="Message AI Verse..."
               rows={1}
-              className="flex-1 bg-transparent border-none outline-none resize-none text-[15px] text-white/90 placeholder:text-white/25 leading-relaxed py-2.5 px-1 max-h-37.5 scrollbar-hide"
-              style={{ fontFamily: 'Inter, sans-serif' }}
+              className="flex-1 bg-transparent border-none outline-none resize-none text-sm md:text-base text-white/95 placeholder:text-white/35 leading-relaxed py-2.5 px-2 max-h-45 scrollbar-hide font-sans"
             />
 
-            {/* Right tools */}
-            <div className="flex items-center gap-0.5 shrink-0 pb-1">
+            {/* Right Action Buttons (Voice & Send/Stop) */}
+            <div className="flex items-center gap-1 shrink-0 pb-0.5">
               <button
                 onClick={handleVoice}
                 disabled={isLoading}
-                className={`p-2.5 rounded-xl transition-all ${
-                  isListening
-                    ? 'bg-red-600 text-white animate-pulse'
-                    : 'text-white/40 hover:text-white/80 hover:bg-white/8'
-                } disabled:opacity-40`}
+                className={`p-2.5 rounded-2xl transition-all cursor-pointer min-h-11 min-w-11 flex items-center justify-center ${isListening
+                  ? 'bg-red-600 text-white animate-pulse shadow-[0_0_15px_rgba(220,38,38,0.6)]'
+                  : 'text-white/50 hover:text-white hover:bg-white/10'
+                  } disabled:opacity-40`}
                 title={isListening ? 'Listening...' : 'Voice input'}
               >
-                {isListening ? <MicOff size={17} /> : <Mic size={17} />}
+                {isListening ? <MicOff size={18} /> : <Mic size={18} />}
               </button>
 
               {isLoading ? (
                 <button
                   onClick={handleStop}
-                  className="p-2.5 rounded-xl bg-red-600/80 hover:bg-red-600 text-white transition-all"
+                  className="p-2.5 rounded-2xl bg-red-600/90 hover:bg-red-600 text-white transition-all cursor-pointer min-h-11 min-w-11 flex items-center justify-center shadow-lg shadow-red-950/50"
                   title="Stop generation"
                 >
-                  <StopCircle size={17} />
+                  <StopCircle size={18} />
                 </button>
               ) : (
                 <button
                   onClick={() => handleSend()}
                   disabled={!input.trim() && !attachment}
-                  className="p-2.5 rounded-xl bg-linear-to-br from-red-600 to-red-700 text-white shadow-lg shadow-red-900/30 hover:shadow-red-900/50 hover:scale-105 transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed disabled:scale-100 disabled:shadow-none"
-                  title="Send (Enter)"
+                  className="p-2.5 rounded-2xl bg-linear-to-br from-red-600 to-red-800 text-white shadow-lg shadow-red-950/50 hover:shadow-[0_0_20px_rgba(230,36,41,0.5)] hover:scale-105 transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed disabled:scale-100 disabled:shadow-none cursor-pointer min-h-11 min-w-11 flex items-center justify-center"
+                  title="Send message"
                 >
-                  <Send size={17} />
+                  <Send size={18} />
                 </button>
               )}
             </div>
           </div>
         </div>
 
-        {/* Bottom hint */}
-        <p className="text-center text-[11px] text-white/15 mt-2 max-w-3xl mx-auto">
-          AI Verse may make mistakes. Verify important information. · Made by Lokesh
+        {/* Footer Subtext */}
+        <p className="text-center text-[10px] text-white/20 mt-2 font-mono uppercase tracking-wider">
+          AI Verse may produce inaccurate information. · Created by Lokesh
         </p>
       </div>
     </div>
