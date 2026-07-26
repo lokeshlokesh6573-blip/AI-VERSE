@@ -12,9 +12,9 @@ import { useSettings } from '@/context/SettingsContext';
 import { getVoiceAssistant } from '@/lib/voice-assistant';
 import { saveMessages, loadMessages, clearMessages as clearStorage } from '@/lib/storage';
 import MarkdownRenderer from '@/components/ui/MarkdownRenderer';
+import SettingsPanel from '@/components/settings/SettingsPanel';
 import type { Message, FileAttachment } from '@/types';
 import dynamic from 'next/dynamic';
-import { useRouter } from 'next/navigation';
 
 const DynamicCameraVision = dynamic(() => import('@/components/CameraVision'), { ssr: false });
 
@@ -152,26 +152,27 @@ function UserMessageActions({
 function ChatHeader({
   onClear,
   onToggleTheme,
+  onOpenSettings,
   theme,
 }: {
   onClear: () => void;
   onToggleTheme: () => void;
+  onOpenSettings: () => void;
   theme: string;
 }) {
-  const router = useRouter();
   return (
-    <header className="h-14 px-4 md:px-6 flex items-center justify-between border-b border-white/8 bg-(--bg-secondary)/60 backdrop-blur-xl shrink-0 z-30">
+    <header className="h-14 px-4 md:px-6 flex items-center justify-between border-b border-(--border) bg-(--bg-secondary)/60 backdrop-blur-xl shrink-0 z-30">
       <div className="flex items-center gap-3">
         <div className="w-8 h-8 rounded-xl bg-linear-to-br from-red-600 to-red-800 flex items-center justify-center shadow-md shadow-red-950/40 border border-red-500/30">
           <Cpu size={15} className="text-white" />
         </div>
         <div>
-          <h1 className="text-sm font-bold text-white tracking-widest font-display flex items-center gap-2">
+          <h1 className="text-sm font-bold text-(--text-primary) tracking-widest font-display flex items-center gap-2">
             AI VERSE
           </h1>
           <div className="flex items-center gap-1.5">
             <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-            <span className="text-[10px] text-white/40 uppercase tracking-widest font-mono">Online</span>
+            <span className="text-[10px] text-(--text-muted) uppercase tracking-widest font-mono">Online</span>
           </div>
         </div>
       </div>
@@ -179,21 +180,21 @@ function ChatHeader({
       <div className="flex items-center gap-1">
         <button
           onClick={onClear}
-          className="p-2 rounded-xl text-white/40 hover:text-white hover:bg-white/8 transition-all cursor-pointer min-h-10 min-w-10 flex items-center justify-center"
+          className="p-2 rounded-xl text-(--text-muted) hover:text-(--text-primary) hover:bg-(--bg-card) transition-all cursor-pointer min-h-10 min-w-10 flex items-center justify-center"
           title="Clear conversation"
         >
           <Trash2 size={16} />
         </button>
         <button
           onClick={onToggleTheme}
-          className="p-2 rounded-xl text-white/40 hover:text-white hover:bg-white/8 transition-all cursor-pointer min-h-10 min-w-10 flex items-center justify-center"
+          className="p-2 rounded-xl text-(--text-muted) hover:text-(--text-primary) hover:bg-(--bg-card) transition-all cursor-pointer min-h-10 min-w-10 flex items-center justify-center"
           title="Toggle theme"
         >
           {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
         </button>
         <button
-          onClick={() => router.push('/settings')}
-          className="p-2 rounded-xl text-white/40 hover:text-white hover:bg-white/8 transition-all cursor-pointer min-h-10 min-w-10 flex items-center justify-center"
+          onClick={onOpenSettings}
+          className="p-2 rounded-xl text-(--text-muted) hover:text-(--text-primary) hover:bg-(--bg-card) transition-all cursor-pointer min-h-10 min-w-10 flex items-center justify-center"
           title="Settings"
         >
           <Settings size={16} />
@@ -250,6 +251,7 @@ export default function ChatInterface({
   const [attachment, setAttachment] = useState<FileAttachment | null>(null);
   const [showCamera, setShowCamera] = useState(false);
   const [showScrollBtn, setShowScrollBtn] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [abortController, setAbortController] = useState<AbortController | null>(null);
 
   // Additional action states
@@ -565,10 +567,14 @@ export default function ChatInterface({
 
   return (
     <div className="flex flex-col h-full w-full overflow-x-hidden relative">
+      {/* Settings Panel */}
+      <SettingsPanel isOpen={showSettings} onClose={() => setShowSettings(false)} />
+
       {/* Header */}
       <ChatHeader
         onClear={handleClear}
         onToggleTheme={handleToggleTheme}
+        onOpenSettings={() => setShowSettings(true)}
         theme={settings.theme}
       />
 
@@ -576,7 +582,7 @@ export default function ChatInterface({
       <div
         ref={scrollRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto chat-scroll px-4 md:px-6 py-6 md:py-8 space-y-6 md:space-y-8"
+        className="flex-1 overflow-y-auto chat-scroll px-4 md:px-6 py-6 md:py-8"
       >
         {/* Welcome Screen (Display ONLY "How can I help you today?") */}
         {messages.length === 0 && (
@@ -584,7 +590,7 @@ export default function ChatInterface({
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="max-w-4xl mx-auto min-h-[60vh] flex flex-col items-center justify-center text-center px-4"
+            className="max-w-[850px] mx-auto min-h-[60vh] flex flex-col items-center justify-center text-center px-4"
           >
             {/* Brand icon / glowing core badge */}
             <div className="mb-6 relative">
@@ -594,7 +600,7 @@ export default function ChatInterface({
             </div>
 
             {/* ONLY display "How can I help you today?" as required */}
-            <h2 className="text-2xl md:text-4xl font-extrabold text-white tracking-tight mb-8">
+            <h2 className="text-2xl md:text-4xl font-extrabold text-(--text-primary) tracking-tight mb-8">
               How can I help you today?
             </h2>
 
@@ -609,16 +615,16 @@ export default function ChatInterface({
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.1 * i, duration: 0.3 }}
                     onClick={() => handleSend(s.query)}
-                    className="p-4 rounded-2xl glass hover:bg-white/10 hover:border-red-500/40 text-left transition-all group flex items-start gap-3.5 border border-white/8 cursor-pointer shadow-lg"
+                    className="p-4 rounded-2xl glass hover:bg-(--bg-card) hover:border-red-500/40 text-left transition-all group flex items-start gap-3.5 border border-(--border) cursor-pointer shadow-lg"
                   >
-                    <div className="p-2 rounded-xl bg-red-600/15 border border-red-500/20 text-red-400 group-hover:text-white group-hover:bg-red-600 transition-colors shrink-0">
+                    <div className="p-2 rounded-xl bg-red-600/15 border border-red-500/20 text-red-500 group-hover:text-white group-hover:bg-red-600 transition-colors shrink-0">
                       <IconComponent size={18} />
                     </div>
                     <div>
-                      <p className="text-sm font-semibold text-white/90 group-hover:text-white transition-colors">
+                      <p className="text-sm font-semibold text-(--text-primary) group-hover:text-(--text-primary) transition-colors">
                         {s.label}
                       </p>
-                      <p className="text-xs text-white/40 line-clamp-1 mt-0.5">
+                      <p className="text-xs text-(--text-muted) line-clamp-1 mt-0.5">
                         {s.query}
                       </p>
                     </div>
@@ -640,7 +646,7 @@ export default function ChatInterface({
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3 }}
-              className={`max-w-4xl mx-auto flex ${isUser ? 'justify-end' : 'justify-start'} group`}
+              className={`max-w-[850px] mx-auto flex ${isUser ? 'justify-end' : 'justify-start'} group`}
             >
               {/* AI Avatar badge */}
               {!isUser && (
@@ -658,10 +664,10 @@ export default function ChatInterface({
                       <img
                         src={msg.attachment.data}
                         alt={msg.attachment.name}
-                        className="rounded-2xl max-w-xs border border-white/12 shadow-xl"
+                        className="rounded-2xl max-w-xs border border-(--border) shadow-xl"
                       />
                     ) : (
-                      <div className="flex items-center gap-2 px-3.5 py-2 bg-white/8 rounded-xl border border-white/10 text-xs text-white/80 backdrop-blur-md">
+                      <div className="flex items-center gap-2 px-3.5 py-2 bg-(--bg-card) rounded-xl border border-(--border) text-xs text-(--text-secondary) backdrop-blur-md">
                         📄 {msg.attachment.name}
                       </div>
                     )}
@@ -670,16 +676,16 @@ export default function ChatInterface({
 
                 {/* Inline Editing for User Message */}
                 {isUser && editingId === msg.id ? (
-                  <div className="w-full bg-[#12121a] border border-red-500/40 rounded-2xl p-3 shadow-2xl">
+                  <div className="w-full bg-(--bg-secondary) border border-red-500/40 rounded-2xl p-3 shadow-2xl">
                     <textarea
                       value={editInput}
                       onChange={e => setEditInput(e.target.value)}
-                      className="w-full bg-transparent text-white text-sm outline-none resize-none min-h-20"
+                      className="w-full bg-transparent text-(--text-primary) text-sm outline-none resize-none min-h-20"
                     />
                     <div className="flex justify-end gap-2 mt-2">
                       <button
                         onClick={() => setEditingId(null)}
-                        className="px-3 py-1.5 text-xs text-white/50 hover:text-white rounded-lg transition-colors cursor-pointer"
+                        className="px-3 py-1.5 text-xs text-(--text-muted) hover:text-(--text-primary) rounded-lg transition-colors cursor-pointer"
                       >
                         Cancel
                       </button>
@@ -696,7 +702,7 @@ export default function ChatInterface({
                   <div
                     className={`${isUser
                       ? 'bg-linear-to-r from-red-600 to-red-700 text-white rounded-2xl rounded-tr-sm px-4 md:px-5 py-3 shadow-lg shadow-red-950/30 border border-red-500/20 text-sm md:text-[15px]'
-                      : 'w-full py-1 text-white/90'
+                      : 'w-full py-1 text-(--msg-ai-text)'
                       } ${msg.isError ? 'border-red-500/50 bg-red-950/20 p-4 rounded-2xl' : ''}`}
                   >
                     {isUser ? (
@@ -762,7 +768,7 @@ export default function ChatInterface({
       </AnimatePresence>
 
       {/* Floating Redesigned Input Bar Container */}
-      <div className="shrink-0 max-w-4xl w-full mx-auto px-4 md:px-6 sticky bottom-0 z-30 pb-4 md:pb-6 pt-2">
+      <div className="shrink-0 max-w-[850px] w-full mx-auto px-4 md:px-6 sticky bottom-0 z-30 pb-4 md:pb-6 pt-2">
         {/* Attachment preview capsule above input */}
         <AnimatePresence>
           {attachment && (
@@ -778,7 +784,7 @@ export default function ChatInterface({
         </AnimatePresence>
 
         {/* Floating Capsule Bar */}
-        <div className="w-full bg-[#0c0c12]/90 backdrop-blur-2xl border border-white/12 rounded-3xl p-2 md:p-2.5 shadow-[0_10px_40px_rgba(0,0,0,0.6)] focus-within:border-red-500/50 focus-within:shadow-[0_0_30px_rgba(230,36,41,0.25)] transition-all">
+        <div className="w-full bg-(--glass-bg) backdrop-blur-2xl border border-(--border) rounded-3xl p-2 md:p-2.5 shadow-lg focus-within:border-red-500/50 focus-within:shadow-[0_0_30px_rgba(230,36,41,0.15)] transition-all">
           <div className="flex items-end gap-1.5">
             {/* Left Action Buttons (Attachment & Camera) */}
             <div className="flex items-center gap-0.5 shrink-0 pb-1">
@@ -791,14 +797,14 @@ export default function ChatInterface({
               />
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="p-2.5 rounded-2xl text-white/50 hover:text-white hover:bg-white/10 transition-all cursor-pointer min-h-11 min-w-11 flex items-center justify-center"
+                className="p-2.5 rounded-2xl text-(--text-muted) hover:text-(--text-primary) hover:bg-(--bg-card) transition-all cursor-pointer min-h-11 min-w-11 flex items-center justify-center"
                 title="Attach file"
               >
                 <Paperclip size={18} />
               </button>
               <button
                 onClick={() => setShowCamera(true)}
-                className="p-2.5 rounded-2xl text-white/50 hover:text-white hover:bg-white/10 transition-all cursor-pointer min-h-11 min-w-11 flex items-center justify-center"
+                className="p-2.5 rounded-2xl text-(--text-muted) hover:text-(--text-primary) hover:bg-(--bg-card) transition-all cursor-pointer min-h-11 min-w-11 flex items-center justify-center"
                 title="Camera / Vision"
               >
                 <Camera size={18} />
@@ -812,9 +818,9 @@ export default function ChatInterface({
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               disabled={isLoading}
-              placeholder="Message AI Verse..."
+              placeholder="Ask AI Verse anything..."
               rows={1}
-              className="flex-1 bg-transparent border-none outline-none resize-none text-sm md:text-base text-white/95 placeholder:text-white/35 leading-relaxed py-2.5 px-2 max-h-45 scrollbar-hide font-sans"
+              className="flex-1 bg-transparent border-none outline-none resize-none text-sm md:text-base text-(--text-primary) placeholder:text-(--text-muted) leading-relaxed py-2.5 px-2 max-h-45 scrollbar-hide font-sans"
             />
 
             {/* Right Action Buttons (Voice & Send/Stop) */}
@@ -824,7 +830,7 @@ export default function ChatInterface({
                 disabled={isLoading}
                 className={`p-2.5 rounded-2xl transition-all cursor-pointer min-h-11 min-w-11 flex items-center justify-center ${isListening
                   ? 'bg-red-600 text-white animate-pulse shadow-[0_0_15px_rgba(220,38,38,0.6)]'
-                  : 'text-white/50 hover:text-white hover:bg-white/10'
+                  : 'text-(--text-muted) hover:text-(--text-primary) hover:bg-(--bg-card)'
                   } disabled:opacity-40`}
                 title={isListening ? 'Listening...' : 'Voice input'}
               >
@@ -854,7 +860,7 @@ export default function ChatInterface({
         </div>
 
         {/* Footer Subtext */}
-        <p className="text-center text-[10px] text-white/20 mt-2 font-mono uppercase tracking-wider">
+        <p className="text-center text-[10px] text-(--text-muted) mt-2 font-mono uppercase tracking-wider">
           AI Verse may produce inaccurate information. · Created by Lokesh
         </p>
       </div>

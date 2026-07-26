@@ -1,36 +1,17 @@
-import { OpenAI } from 'openai';
 import { NextResponse } from 'next/server';
 import { webSearch, needsWebSearch } from '@/lib/web-search';
 import { detectModules, buildSystemPrompt, compressConversation } from '@/lib/prompts';
 import { improvePrompt } from '@/lib/prompt-engine';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { routeRequest } from '@/lib/providers';
 
 export const runtime = 'edge';
-
-async function attemptChatCompletion(
-  apiKey: string,
-  baseURL: string,
-  model: string,
-  messages: any[],
-  temperature: number = 0.7,
-  maxTokens: number = 2048,
-) {
-  const ai = new OpenAI({ apiKey, baseURL });
-  return await ai.chat.completions.create({
-    model,
-    messages,
-    stream: true,
-    temperature,
-    top_p: 0.9,
-    max_tokens: maxTokens,
-  });
-}
 
 export async function POST(req: Request) {
   try {
     // ── Rate limiting ──
     const ip = req.headers.get('x-forwarded-for') || req.headers.get('x-real-ip') || 'unknown';
-    const { allowed, remaining } = checkRateLimit(ip);
+    const { allowed } = checkRateLimit(ip);
     if (!allowed) {
       return NextResponse.json(
         { error: 'RATE_LIMITED', message: 'Too many requests. Please wait a moment.' },
@@ -47,9 +28,6 @@ export async function POST(req: Request) {
       hasImage = false,
       imageData,
     } = await req.json();
-
-    const groqKey = process.env.GROQ_API_KEY;
-    const openRouterKey = process.env.OPENROUTER_API_KEY;
 
     const defaultModel = hasImage
       ? 'llama-3.2-11b-vision-instruct'
@@ -89,7 +67,6 @@ export async function POST(req: Request) {
     // ── Phase 2: Compress long conversations ──
     const formatted = messages.map((m: any, idx: number) => {
       const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content);
-      // Replace last user message with improved version
       if (idx === messages.length - 1 && m.role === 'user') {
         return { role: 'user' as const, content: improvedText };
       }
@@ -113,44 +90,17 @@ export async function POST(req: Request) {
 
     const fullMessages = [systemMessage, ...processed];
 
-    // ── Provider chain: Groq → OpenRouter → Local fallback ──
-    let responseStream: any;
-
-    if (groqKey && groqKey !== 'placeholder' && groqKey.trim()) {
-      try {
-        responseStream = await attemptChatCompletion(
-          groqKey,
-          'https://api.groq.com/openai/v1',
-          selectedModel,
-          fullMessages,
-          temperature,
-          maxTokens,
-        );
-      } catch (groqErr: any) {
-        console.warn('Groq failed:', groqErr?.message);
-      }
-    }
-
-    if (!responseStream && openRouterKey && openRouterKey !== 'placeholder' && openRouterKey.trim()) {
-      try {
-        const fallbackModel = hasImage
-          ? 'meta-llama/llama-3.2-11b-vision-instruct'
-          : 'meta-llama/llama-3.1-8b-instruct';
-        responseStream = await attemptChatCompletion(
-          openRouterKey,
-          'https://openrouter.ai/api/v1',
-          fallbackModel,
-          fullMessages,
-          temperature,
-          maxTokens,
-        );
-      } catch (orErr: any) {
-        console.warn('OpenRouter failed:', orErr?.message);
-      }
-    }
+    // ── Route request through provider chain ──
+    const { stream, provider } = await routeRequest({
+      messages: fullMessages,
+      model: selectedModel,
+      temperature,
+      maxTokens,
+      hasImage,
+    });
 
     // ── Local fallback ──
-    if (!responseStream) {
+    if (!stream) {
       const text = lastUserText.toLowerCase();
       let reply = "Systems online. I am AI Verse, created by Lokesh. How can I assist you?";
 
@@ -158,8 +108,6 @@ export async function POST(req: Request) {
         reply = "I was created and developed by Lokesh.";
       } else if (/hello|hi|hey/i.test(text)) {
         reply = "Hello! What would you like to explore today?";
-      } else if (needsWebSearch(text)) {
-        reply = "I need an API key configured to search the web. Please add GOOGLE_SEARCH_API_KEY to your environment.";
       }
 
       const encoder = new TextEncoder();
@@ -174,29 +122,12 @@ export async function POST(req: Request) {
       );
     }
 
-    // ── Stream response ──
-    const encoder = new TextEncoder();
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          for await (const chunk of responseStream as any) {
-            const content = chunk.choices[0]?.delta?.content || '';
-            if (content) controller.enqueue(encoder.encode(content));
-          }
-        } catch (err) {
-          console.error('Stream error:', err);
-          controller.error(err);
-        } finally {
-          controller.close();
-        }
-      },
-    });
-
     return new Response(stream, {
       headers: {
         'Content-Type': 'text/plain; charset=utf-8',
         'Cache-Control': 'no-cache, no-transform',
         'Connection': 'keep-alive',
+        'X-Provider': provider,
       },
     });
 

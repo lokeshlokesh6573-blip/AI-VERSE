@@ -7,12 +7,9 @@ import {
   Settings as SettingsIcon, 
   Moon, 
   Sun, 
-  Cpu, 
   Trash2, 
   CheckCircle2,
-  AlertCircle,
   Zap,
-  Globe,
   Sliders,
   Volume2
 } from 'lucide-react';
@@ -45,7 +42,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
         onClick={onClose}
-        className="absolute inset-0 bg-black/70 backdrop-blur-md"
+        className="absolute inset-0 bg-black/60 dark:bg-black/70 backdrop-blur-md"
       />
 
       {/* Panel */}
@@ -53,17 +50,17 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
         initial={{ opacity: 0, scale: 0.95, y: 15 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95, y: 15 }}
-        className="relative w-full max-w-3xl h-[85vh] bg-(--bg-secondary) border border-white/10 rounded-3xl overflow-hidden flex flex-col shadow-2xl z-10"
+        className="relative w-full max-w-3xl h-[85vh] bg-(--bg-secondary) border border-(--border) rounded-3xl overflow-hidden flex flex-col shadow-2xl z-10"
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-white/10 bg-white/2">
+        <div className="flex items-center justify-between p-6 border-b border-(--border)">
           <div className="flex items-center gap-3">
             <div className="p-3 bg-red-600/10 rounded-2xl border border-red-500/20 text-red-500">
               <SettingsIcon size={22} className="animate-[spin_6s_linear_infinite]" />
             </div>
             <div>
-              <h1 className="text-xl font-bold font-display tracking-wide text-white">System Settings</h1>
-              <p className="text-[11px] text-white/40 font-mono uppercase tracking-widest">AI Verse Configuration</p>
+              <h1 className="text-xl font-bold font-display tracking-wide text-(--text-primary)">System Settings</h1>
+              <p className="text-[11px] text-(--text-muted) font-mono uppercase tracking-widest">AI Verse Configuration</p>
             </div>
           </div>
 
@@ -74,7 +71,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                   initial={{ opacity: 0, x: 10 }}
                   animate={{ opacity: 1, x: 0 }}
                   exit={{ opacity: 0, x: 10 }}
-                  className="px-3 py-1 rounded-full flex items-center gap-1.5 text-[11px] font-mono bg-green-500/10 text-green-400 border border-green-500/20"
+                  className="px-3 py-1 rounded-full flex items-center gap-1.5 text-[11px] font-mono bg-green-500/10 text-green-500 border border-green-500/20"
                 >
                   <CheckCircle2 size={13} /> Saved
                 </motion.div>
@@ -83,7 +80,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
 
             <button 
               onClick={onClose}
-              className="p-2.5 hover:bg-white/10 rounded-full transition-colors text-white/50 hover:text-white"
+              className="p-2.5 hover:bg-(--bg-card) rounded-full transition-colors text-(--text-muted) hover:text-(--text-primary)"
             >
               <X size={18} />
             </button>
@@ -96,8 +93,8 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
           {/* Section: AI Model Selection */}
           <div>
             <div className="flex items-center gap-2 mb-4">
-              <Zap size={16} className="text-blue-400" />
-              <h2 className="text-sm font-bold text-white uppercase tracking-wider font-mono">Core Intelligence Model</h2>
+              <Zap size={16} className="text-blue-500" />
+              <h2 className="text-sm font-bold text-(--text-primary) uppercase tracking-wider font-mono">Core Intelligence Model</h2>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {AI_MODELS.map((m) => (
@@ -108,18 +105,18 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                     "p-4 rounded-2xl border text-left transition-all relative",
                     settings.model === m.id 
                       ? "bg-blue-600/10 border-blue-500/50 shadow-lg shadow-blue-900/10" 
-                      : "bg-white/3 border-white/5 hover:border-white/15"
+                      : "bg-(--bg-card) border-(--border) hover:border-(--text-muted)"
                   )}
                 >
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-bold text-white">{m.name}</span>
+                    <span className="text-xs font-bold text-(--text-primary)">{m.name}</span>
                     {m.supportsVision && (
-                      <span className="px-2 py-0.5 rounded-full text-[9px] font-mono bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-mono bg-purple-500/20 text-purple-500 border border-purple-500/30">
                         Vision
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-white/50 leading-relaxed">{m.description}</p>
+                  <p className="text-[11px] text-(--text-secondary) leading-relaxed">{m.description}</p>
                   {settings.model === m.id && (
                     <div className="absolute top-3 right-3 w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
                   )}
@@ -129,17 +126,17 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
           </div>
 
           {/* Section: Generation Parameters */}
-          <div className="border-t border-white/8 pt-6">
+          <div className="border-t border-(--border) pt-6">
             <div className="flex items-center gap-2 mb-4">
-              <Sliders size={16} className="text-purple-400" />
-              <h2 className="text-sm font-bold text-white uppercase tracking-wider font-mono">Response Parameters</h2>
+              <Sliders size={16} className="text-purple-500" />
+              <h2 className="text-sm font-bold text-(--text-primary) uppercase tracking-wider font-mono">Response Parameters</h2>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               {/* Response Style */}
-              <div className="bg-white/3 p-4 rounded-2xl border border-white/5">
-                <label className="text-xs font-semibold text-white/80 block mb-2">Response Verbosity</label>
-                <div className="flex gap-2 p-1 bg-black/40 rounded-xl border border-white/5">
+              <div className="bg-(--bg-card) p-4 rounded-2xl border border-(--border)">
+                <label className="text-xs font-semibold text-(--text-secondary) block mb-2">Response Verbosity</label>
+                <div className="flex gap-2 p-1 bg-(--bg-input) rounded-xl border border-(--border)">
                   {(['concise', 'detailed'] as const).map((style) => (
                     <button
                       key={style}
@@ -147,8 +144,8 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                       className={cn(
                         "flex-1 py-2 rounded-lg text-xs font-medium capitalize transition-all",
                         settings.responseStyle === style 
-                          ? "bg-white text-black font-semibold shadow-md" 
-                          : "text-white/40 hover:text-white"
+                          ? "bg-(--text-primary) text-(--bg) font-semibold shadow-md" 
+                          : "text-(--text-muted) hover:text-(--text-primary)"
                       )}
                     >
                       {style}
@@ -158,10 +155,10 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
               </div>
 
               {/* Temperature */}
-              <div className="bg-white/3 p-4 rounded-2xl border border-white/5">
+              <div className="bg-(--bg-card) p-4 rounded-2xl border border-(--border)">
                 <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-semibold text-white/80">Creativity (Temperature)</label>
-                  <span className="text-xs font-mono text-blue-400">{settings.temperature}</span>
+                  <label className="text-xs font-semibold text-(--text-secondary)">Creativity (Temperature)</label>
+                  <span className="text-xs font-mono text-blue-500">{settings.temperature}</span>
                 </div>
                 <input
                   type="range"
@@ -172,7 +169,7 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                   onChange={(e) => handleUpdate({ temperature: parseFloat(e.target.value) })}
                   className="w-full accent-blue-500 cursor-pointer"
                 />
-                <div className="flex justify-between text-[10px] text-white/30 font-mono mt-1">
+                <div className="flex justify-between text-[10px] text-(--text-muted) font-mono mt-1">
                   <span>Precise</span>
                   <span>Creative</span>
                 </div>
@@ -181,40 +178,40 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
           </div>
 
           {/* Section: Appearance & Audio */}
-          <div className="border-t border-white/8 pt-6">
+          <div className="border-t border-(--border) pt-6">
             <div className="flex items-center gap-2 mb-4">
-              <Sun size={16} className="text-amber-400" />
-              <h2 className="text-sm font-bold text-white uppercase tracking-wider font-mono">Appearance & Audio</h2>
+              <Sun size={16} className="text-amber-500" />
+              <h2 className="text-sm font-bold text-(--text-primary) uppercase tracking-wider font-mono">Appearance & Audio</h2>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Theme */}
-              <div className="bg-white/3 p-4 rounded-2xl border border-white/5 flex items-center justify-between">
+              <div className="bg-(--bg-card) p-4 rounded-2xl border border-(--border) flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-semibold text-white">Interface Theme</p>
-                  <p className="text-[11px] text-white/40">Dark or light aesthetic</p>
+                  <p className="text-xs font-semibold text-(--text-primary)">Interface Theme</p>
+                  <p className="text-[11px] text-(--text-muted)">Dark or light aesthetic</p>
                 </div>
                 <button
                   onClick={() => handleUpdate({ theme: settings.theme === 'dark' ? 'light' : 'dark' })}
-                  className="p-2.5 bg-white/5 hover:bg-white/10 rounded-xl border border-white/10 text-white transition-all"
+                  className="p-2.5 bg-(--bg-input) hover:bg-(--bg-card) rounded-xl border border-(--border) text-(--text-primary) transition-all"
                 >
                   {settings.theme === 'dark' ? <Moon size={16} /> : <Sun size={16} />}
                 </button>
               </div>
 
               {/* Voice */}
-              <div className="bg-white/3 p-4 rounded-2xl border border-white/5 flex items-center justify-between">
+              <div className="bg-(--bg-card) p-4 rounded-2xl border border-(--border) flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-semibold text-white">Voice Assistant</p>
-                  <p className="text-[11px] text-white/40">Enable text-to-speech output</p>
+                  <p className="text-xs font-semibold text-(--text-primary)">Voice Assistant</p>
+                  <p className="text-[11px] text-(--text-muted)">Enable text-to-speech output</p>
                 </div>
                 <button
                   onClick={() => handleUpdate({ voiceEnabled: !settings.voiceEnabled })}
                   className={cn(
                     "p-2.5 rounded-xl border transition-all",
                     settings.voiceEnabled 
-                      ? "bg-blue-600/20 text-blue-400 border-blue-500/40" 
-                      : "bg-white/5 text-white/30 border-white/10"
+                      ? "bg-blue-600/20 text-blue-500 border-blue-500/40" 
+                      : "bg-(--bg-input) text-(--text-muted) border-(--border)"
                   )}
                 >
                   <Volume2 size={16} />
@@ -224,17 +221,17 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
           </div>
 
           {/* Section: Reset */}
-          <div className="border-t border-white/8 pt-6 flex justify-between items-center">
+          <div className="border-t border-(--border) pt-6 flex justify-between items-center">
             <div>
-              <p className="text-xs font-semibold text-white/70">Reset Preferences</p>
-              <p className="text-[11px] text-white/30">Restore all settings to default values</p>
+              <p className="text-xs font-semibold text-(--text-secondary)">Reset Preferences</p>
+              <p className="text-[11px] text-(--text-muted)">Restore all settings to default values</p>
             </div>
             <button
               onClick={() => {
                 resetSettings();
                 handleUpdate({});
               }}
-              className="px-4 py-2 bg-white/5 hover:bg-red-500/10 hover:text-red-400 border border-white/10 rounded-xl text-xs text-white/60 font-mono transition-all"
+              className="px-4 py-2 bg-(--bg-input) hover:bg-red-500/10 hover:text-red-500 border border-(--border) rounded-xl text-xs text-(--text-secondary) font-mono transition-all"
             >
               Reset Defaults
             </button>
@@ -243,8 +240,8 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
         </div>
 
         {/* Footer */}
-        <div className="p-4 px-6 bg-white/2 border-t border-white/8 flex items-center justify-between">
-          <span className="text-[11px] text-white/30 font-mono">AI Verse v3.2 · Local Preference Storage</span>
+        <div className="p-4 px-6 border-t border-(--border) flex items-center justify-between">
+          <span className="text-[11px] text-(--text-muted) font-mono">AI Verse v3.2 · Local Preference Storage</span>
           <button
             onClick={onClose}
             className="px-5 py-2 bg-red-600 hover:bg-red-700 text-white rounded-xl text-xs font-bold transition-all shadow-lg shadow-red-900/30"
