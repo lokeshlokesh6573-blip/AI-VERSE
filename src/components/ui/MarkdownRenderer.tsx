@@ -6,7 +6,7 @@ import { Copy, Check, Terminal } from 'lucide-react';
 // ─── Inline Code ─────────────────────────────────────────────────────────────
 function InlineCode({ children }: { children: string }) {
   return (
-    <code className="font-mono text-[0.875em] px-1.5 py-0.5 rounded bg-white/10 border border-white/10 text-fuchsia-300 dark:text-fuchsia-300">
+    <code className="font-mono text-[0.85em] px-1.5 py-0.5 rounded-md bg-white/10 border border-white/10 text-red-300">
       {children}
     </code>
   );
@@ -24,21 +24,21 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
     } catch {}
   }, [code]);
 
-  const displayLang = language || 'code';
+  const displayLang = (language || 'code').toLowerCase();
 
   return (
-    <div className="my-4 rounded-xl overflow-hidden border border-white/10 shadow-2xl bg-[#0d0d14]">
+    <div className="my-4 rounded-xl overflow-hidden border border-white/12 shadow-2xl bg-[#09090e] transition-all">
       {/* Header bar */}
-      <div className="flex items-center justify-between px-4 py-2 bg-white/5 border-b border-white/10">
+      <div className="flex items-center justify-between px-4 py-2 bg-white/[0.04] border-b border-white/10">
         <div className="flex items-center gap-2">
-          <Terminal size={13} className="text-white/40" />
-          <span className="text-[11px] font-mono text-white/50 uppercase tracking-widest">
+          <Terminal size={13} className="text-red-400" />
+          <span className="text-[11px] font-mono text-white/60 uppercase tracking-wider font-semibold">
             {displayLang}
           </span>
         </div>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] text-white/40 hover:text-white/80 hover:bg-white/10 transition-all"
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium text-white/50 hover:text-white hover:bg-white/10 transition-all cursor-pointer"
           title="Copy code"
         >
           {copied ? (
@@ -57,7 +57,7 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
 
       {/* Code content */}
       <div className="overflow-x-auto">
-        <pre className="p-4 text-[13px] leading-relaxed">
+        <pre className="p-4 text-[13px] leading-relaxed select-text">
           <code
             className="font-mono text-slate-200"
             style={{ fontFamily: 'JetBrains Mono, Fira Code, monospace' }}
@@ -82,22 +82,22 @@ function Table({ content }: { content: string }) {
   const rows = lines.slice(2).map(parseRow); // skip separator line
 
   return (
-    <div className="my-4 overflow-x-auto rounded-xl border border-white/10">
-      <table className="w-full text-sm">
+    <div className="my-5 overflow-x-auto rounded-xl border border-white/10 bg-white/[0.02]">
+      <table className="w-full text-sm text-left border-collapse">
         <thead>
-          <tr className="bg-white/5 border-b border-white/10">
+          <tr className="bg-white/[0.06] border-b border-white/10">
             {headers.map((h, i) => (
-              <th key={i} className="px-4 py-2.5 text-left font-semibold text-white/80 whitespace-nowrap">
+              <th key={i} className="px-4 py-3 font-semibold text-white/90 tracking-wide text-xs uppercase">
                 {h}
               </th>
             ))}
           </tr>
         </thead>
-        <tbody>
+        <tbody className="divide-y divide-white/5">
           {rows.map((row, ri) => (
-            <tr key={ri} className="border-b border-white/5 hover:bg-white/2 transition-colors">
+            <tr key={ri} className="hover:bg-white/[0.03] transition-colors">
               {row.map((cell, ci) => (
-                <td key={ci} className="px-4 py-2 text-white/70">
+                <td key={ci} className="px-4 py-2.5 text-white/80 text-sm">
                   {cell}
                 </td>
               ))}
@@ -136,12 +136,20 @@ export default function MarkdownRenderer({ content, isStreaming }: MarkdownProps
       const headingMatch = remaining.match(/^(#{1,4}) (.+)/);
       if (headingMatch) {
         const level = headingMatch[1].length;
-        const text = headingMatch[2];
+        const headingText = headingMatch[2];
         const Tag = `h${level}` as 'h1' | 'h2' | 'h3' | 'h4';
-        const sizes = ['text-2xl', 'text-xl', 'text-lg', 'text-base'];
+        
+        const headingStyles: Record<number, string> = {
+          1: 'text-xl md:text-2xl font-bold text-white mt-6 mb-3 pb-2 border-b border-white/10 flex items-center gap-2',
+          2: 'text-lg md:text-xl font-bold text-white mt-5 mb-2.5',
+          3: 'text-base md:text-lg font-semibold text-white/95 mt-4 mb-2',
+          4: 'text-sm md:text-base font-semibold text-white/90 mt-3 mb-1.5',
+        };
+
         nodes.push(
-          <Tag key={keyIdx++} className={`${sizes[level - 1]} font-bold text-white mt-5 mb-2 first:mt-0`}>
-            {renderInline(text)}
+          <Tag key={keyIdx++} className={`${headingStyles[level]} tracking-tight first:mt-0`}>
+            {level <= 2 && <span className="w-1.5 h-4 rounded-full bg-red-500 inline-block shrink-0" />}
+            <span>{renderInline(headingText)}</span>
           </Tag>
         );
         remaining = remaining.slice(headingMatch[0].length).replace(/^\n/, '');
@@ -150,7 +158,7 @@ export default function MarkdownRenderer({ content, isStreaming }: MarkdownProps
 
       // ── Horizontal rule ──────────────────────────────────────────
       if (/^---+/.test(remaining)) {
-        nodes.push(<hr key={keyIdx++} className="my-4 border-white/10" />);
+        nodes.push(<hr key={keyIdx++} className="my-5 border-white/10" />);
         remaining = remaining.replace(/^---+\n?/, '');
         continue;
       }
@@ -179,7 +187,7 @@ export default function MarkdownRenderer({ content, isStreaming }: MarkdownProps
           i++;
         }
         nodes.push(
-          <blockquote key={keyIdx++} className="my-3 pl-4 border-l-2 border-red-500/50 text-white/60 italic">
+          <blockquote key={keyIdx++} className="my-4 pl-4 py-1.5 border-l-2 border-red-500 bg-red-950/15 rounded-r-lg text-white/80 italic text-sm md:text-base">
             {lines.join('\n')}
           </blockquote>
         );
@@ -197,10 +205,10 @@ export default function MarkdownRenderer({ content, isStreaming }: MarkdownProps
           i++;
         }
         nodes.push(
-          <ul key={keyIdx++} className="my-3 space-y-1 pl-5">
+          <ul key={keyIdx++} className="my-3 space-y-1.5 pl-1">
             {items.map((item, ii) => (
-              <li key={ii} className="text-white/80 flex gap-2">
-                <span className="text-red-400 mt-1 shrink-0 text-xs">▸</span>
+              <li key={ii} className="text-white/85 flex items-start gap-2.5 leading-relaxed text-sm md:text-[15px]">
+                <span className="text-red-500 mt-1.5 shrink-0 text-xs">▸</span>
                 <span>{renderInline(item)}</span>
               </li>
             ))}
@@ -222,10 +230,10 @@ export default function MarkdownRenderer({ content, isStreaming }: MarkdownProps
           num++;
         }
         nodes.push(
-          <ol key={keyIdx++} className="my-3 space-y-1 pl-5">
+          <ol key={keyIdx++} className="my-3 space-y-1.5 pl-1">
             {items.map((item, ii) => (
-              <li key={ii} className="text-white/80 flex gap-2">
-                <span className="text-blue-400 font-mono text-xs mt-1 shrink-0 min-w-[1.5em]">{ii + 1}.</span>
+              <li key={ii} className="text-white/85 flex items-start gap-2.5 leading-relaxed text-sm md:text-[15px]">
+                <span className="text-red-400 font-mono text-xs mt-0.5 shrink-0 font-semibold min-w-[1.2em]">{ii + 1}.</span>
                 <span>{renderInline(item)}</span>
               </li>
             ))}
@@ -241,7 +249,7 @@ export default function MarkdownRenderer({ content, isStreaming }: MarkdownProps
       const trimmed = para.trim();
       if (trimmed) {
         nodes.push(
-          <p key={keyIdx++} className="text-white/85 leading-relaxed mb-3 last:mb-0">
+          <p key={keyIdx++} className="text-white/90 leading-relaxed text-sm md:text-[15px] mb-3.5 last:mb-0">
             {renderInline(trimmed)}
           </p>
         );
@@ -254,7 +262,6 @@ export default function MarkdownRenderer({ content, isStreaming }: MarkdownProps
   };
 
   const renderInline = (text: string): React.ReactNode => {
-    // Split by inline patterns
     const parts = text.split(/(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|__[^_]+__|_[^_]+_|\[.+?\]\(.+?\))/);
     return parts.map((part, i) => {
       if (!part) return null;
@@ -265,14 +272,14 @@ export default function MarkdownRenderer({ content, isStreaming }: MarkdownProps
         return <strong key={i} className="font-semibold text-white">{part.slice(2, -2)}</strong>;
       }
       if ((part.startsWith('*') && part.endsWith('*')) || (part.startsWith('_') && part.endsWith('_'))) {
-        return <em key={i} className="italic text-white/70">{part.slice(1, -1)}</em>;
+        return <em key={i} className="italic text-white/75">{part.slice(1, -1)}</em>;
       }
       // Link [text](url)
       const linkMatch = part.match(/^\[(.+?)\]\((.+?)\)$/);
       if (linkMatch) {
         return (
           <a key={i} href={linkMatch[2]} target="_blank" rel="noopener noreferrer"
-            className="text-blue-400 underline underline-offset-2 hover:text-blue-300 transition-colors">
+            className="text-red-400 underline underline-offset-4 hover:text-red-300 transition-colors">
             {linkMatch[1]}
           </a>
         );
@@ -282,10 +289,10 @@ export default function MarkdownRenderer({ content, isStreaming }: MarkdownProps
   };
 
   return (
-    <div className="ai-prose text-sm md:text-[15px]">
+    <div className="ai-prose text-sm md:text-[15px] tracking-normal">
       {renderContent(content)}
       {isStreaming && (
-        <span className="inline-block w-1.5 h-4 bg-blue-400 ml-0.5 animate-pulse rounded-sm align-text-bottom" />
+        <span className="inline-block w-2 h-4 bg-red-500 ml-1 rounded-sm animate-pulse align-middle shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
       )}
     </div>
   );
