@@ -3,7 +3,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Camera, X, Focus, RefreshCcw } from 'lucide-react';
-import Tesseract from 'tesseract.js';
 
 interface CameraVisionProps {
   onClose: () => void;
@@ -79,6 +78,7 @@ export default function CameraVision({ onClose, onCaptureImage, onOCRResult }: C
 
     setIsProcessing(true);
     try {
+      const Tesseract = await import('tesseract.js');
       const result = await Tesseract.recognize(imgData, 'eng', {
         logger: m => console.log(m)
       });

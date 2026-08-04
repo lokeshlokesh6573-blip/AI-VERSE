@@ -1,8 +1,4 @@
 import * as mammoth from 'mammoth';
-import * as pdfjsLib from 'pdfjs-dist';
-
-// Use CDN for the worker to avoid complex Webpack/Next.js config errors with PDF.js
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
 
 export async function parseFileText(file: File): Promise<string> {
   const extension = file.name.split('.').pop()?.toLowerCase();
@@ -18,25 +14,22 @@ export async function parseFileText(file: File): Promise<string> {
   }
 
   if (extension === 'pdf') {
+    const pdfjsLib = await import('pdfjs-dist');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
     const arrayBuffer = await file.arrayBuffer();
     const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
     const pdf = await loadingTask.promise;
     let fullText = '';
-    
-    // Limiting to up to 10 pages to ensure it processes quickly on Vercel Edge functions & Browser memory
     const numPages = Math.min(pdf.numPages, 10);
-    
     for (let i = 1; i <= numPages; i++) {
         const page = await pdf.getPage(i);
         const textContent = await page.getTextContent();
         const pageText = textContent.items.map((item: any) => item.str).join(' ');
         fullText += pageText + '\n';
     }
-    
     if (pdf.numPages > 10) {
        fullText += '\n\n[WARNING: Document truncated to first 10 pages due to system limits]';
     }
-    
     return fullText.trim();
   }
 

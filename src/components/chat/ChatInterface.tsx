@@ -6,7 +6,7 @@ import {
   Send, Mic, MicOff, Paperclip, Settings, StopCircle,
   Copy, Check, RefreshCw, ChevronDown, X,
   Camera, Sun, Moon, Cpu, Trash2, ThumbsUp, ThumbsDown,
-  Volume2, VolumeX, Edit2, Sparkles, Code, PenTool, BarChart2, Search
+  Volume2, VolumeX, Edit2, Sparkles, Pin
 } from 'lucide-react';
 import { useSettings } from '@/context/SettingsContext';
 import { getVoiceAssistant } from '@/lib/voice-assistant';
@@ -27,7 +27,7 @@ const WELCOME_SUGGESTIONS = [
 ];
 
 // ─── Assistant Message Action Toolbar ───────────────────────────────────────
-function AssistantMessageActions({
+const AssistantMessageActions = React.memo(function AssistantMessageActions({
   message,
   isLastAI,
   onRegenerate,
@@ -36,6 +36,8 @@ function AssistantMessageActions({
   likedState,
   onLike,
   onDislike,
+  onPin,
+  isPinned,
 }: {
   message: Message;
   isLastAI: boolean;
@@ -45,6 +47,8 @@ function AssistantMessageActions({
   likedState?: 'like' | 'dislike';
   onLike: () => void;
   onDislike: () => void;
+  onPin: () => void;
+  isPinned: boolean;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -85,6 +89,16 @@ function AssistantMessageActions({
         <ThumbsDown size={14} />
       </button>
 
+      {/* Pin */}
+      <button
+        onClick={onPin}
+        className={`p-1.5 rounded-md transition-all cursor-pointer min-h-8 min-w-8 flex items-center justify-center ${isPinned ? 'text-amber-400 bg-amber-500/10' : 'text-white/40 hover:text-white hover:bg-white/10'
+          }`}
+        title={isPinned ? 'Unpin response' : 'Pin response'}
+      >
+        <Pin size={14} />
+      </button>
+
       {/* Read Aloud */}
       <button
         onClick={onSpeak}
@@ -107,9 +121,9 @@ function AssistantMessageActions({
       )}
     </div>
   );
-}
+});
 
-// ─── User Message Action Toolbar ───────────────────────────────────────────
+// ─── User Message Action Toolbar ───────────────────────────────────
 function UserMessageActions({
   message,
   onEdit,
@@ -458,6 +472,13 @@ export default function ChatInterface({
     }));
   };
 
+  // ── Pin / Unpin ─────────────────────────────────────────────────────────────
+  const handlePinToggle = (id: string) => {
+    setMessages(prev =>
+      prev.map(m => m.id === id ? { ...m, isPinned: !m.isPinned } : m)
+    );
+  };
+
   // ── Edit user message ───────────────────────────────────────────────────────
   const startEditUserMsg = (msg: Message) => {
     setEditingId(msg.id);
@@ -590,7 +611,7 @@ export default function ChatInterface({
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5 }}
-            className="max-w-[850px] mx-auto min-h-[60vh] flex flex-col items-center justify-center text-center px-4"
+            className="max-w-212.5 mx-auto min-h-[60vh] flex flex-col items-center justify-center text-center px-4"
           >
             {/* Brand icon / glowing core badge */}
             <div className="mb-6 relative">
@@ -646,7 +667,7 @@ export default function ChatInterface({
               initial={{ opacity: 0, y: 12 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3 }}
-              className={`max-w-[850px] mx-auto flex ${isUser ? 'justify-end' : 'justify-start'} group`}
+              className={`max-w-212.5 mx-auto flex ${isUser ? 'justify-end' : 'justify-start'} group`}
             >
               {/* AI Avatar badge */}
               {!isUser && (
@@ -697,14 +718,21 @@ export default function ChatInterface({
                       </button>
                     </div>
                   </div>
-                ) : (
-                  /* Standard Message Bubble / Clean layout */
-                  <div
-                    className={`${isUser
-                      ? 'bg-linear-to-r from-red-600 to-red-700 text-white rounded-2xl rounded-tr-sm px-4 md:px-5 py-3 shadow-lg shadow-red-950/30 border border-red-500/20 text-sm md:text-[15px]'
-                      : 'w-full py-1 text-(--msg-ai-text)'
-                      } ${msg.isError ? 'border-red-500/50 bg-red-950/20 p-4 rounded-2xl' : ''}`}
-                  >
+) : (
+                    /* Standard Message Bubble / Clean layout */
+                    <div
+                      className={`${isUser
+                        ? 'bg-linear-to-r from-red-600 to-red-700 text-white rounded-2xl rounded-tr-sm px-4 md:px-5 py-3 shadow-lg shadow-red-950/30 border border-red-500/20 text-sm md:text-[15px]'
+                        : 'w-full py-1 text-(--msg-ai-text)'
+                        } ${msg.isError ? 'border-red-500/50 bg-red-950/20 p-4 rounded-2xl' : ''}`}
+                    >
+                    {!isUser && msg.isPinned && (
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-mono uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                          <Pin size={9} /> Pinned
+                        </span>
+                      </div>
+                    )}
                     {isUser ? (
                       <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
                     ) : msg.content ? (
@@ -726,6 +754,8 @@ export default function ChatInterface({
                     likedState={likedMessages[msg.id]}
                     onLike={() => handleLikeToggle(msg.id, 'like')}
                     onDislike={() => handleLikeToggle(msg.id, 'dislike')}
+                    onPin={() => handlePinToggle(msg.id)}
+                    isPinned={!!msg.isPinned}
                   />
                 )}
 
@@ -768,7 +798,7 @@ export default function ChatInterface({
       </AnimatePresence>
 
       {/* Floating Redesigned Input Bar Container */}
-      <div className="shrink-0 max-w-[850px] w-full mx-auto px-4 md:px-6 sticky bottom-0 z-30 pb-4 md:pb-6 pt-2">
+      <div className="shrink-0 max-w-212.5 w-full mx-auto px-4 md:px-6 sticky bottom-0 z-30 pb-4 md:pb-6 pt-2">
         {/* Attachment preview capsule above input */}
         <AnimatePresence>
           {attachment && (

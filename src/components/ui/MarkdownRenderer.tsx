@@ -21,7 +21,7 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
       await navigator.clipboard.writeText(code);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
-    } catch {}
+    } catch { }
   }, [code]);
 
   const displayLang = (language || 'code').toLowerCase();
@@ -29,7 +29,7 @@ function CodeBlock({ language, code }: { language: string; code: string }) {
   return (
     <div className="my-4 rounded-xl overflow-hidden border border-white/12 shadow-2xl bg-[#09090e] transition-all">
       {/* Header bar */}
-      <div className="flex items-center justify-between px-4 py-2 bg-white/[0.04] border-b border-white/10">
+      <div className="flex items-center justify-between px-4 py-2 bg-white/4 border-b border-white/10">
         <div className="flex items-center gap-2">
           <Terminal size={13} className="text-red-400" />
           <span className="text-[11px] font-mono text-white/60 uppercase tracking-wider font-semibold">
@@ -82,10 +82,10 @@ function Table({ content }: { content: string }) {
   const rows = lines.slice(2).map(parseRow); // skip separator line
 
   return (
-    <div className="my-5 overflow-x-auto rounded-xl border border-white/10 bg-white/[0.02]">
+    <div className="my-5 overflow-x-auto rounded-xl border border-white/10 bg-white/2">
       <table className="w-full text-sm text-left border-collapse">
         <thead>
-          <tr className="bg-white/[0.06] border-b border-white/10">
+          <tr className="bg-white/6 border-b border-white/10">
             {headers.map((h, i) => (
               <th key={i} className="px-4 py-3 font-semibold text-white/90 tracking-wide text-xs uppercase">
                 {h}
@@ -95,7 +95,7 @@ function Table({ content }: { content: string }) {
         </thead>
         <tbody className="divide-y divide-white/5">
           {rows.map((row, ri) => (
-            <tr key={ri} className="hover:bg-white/[0.03] transition-colors">
+            <tr key={ri} className="hover:bg-white/3 transition-colors">
               {row.map((cell, ci) => (
                 <td key={ci} className="px-4 py-2.5 text-white/80 text-sm">
                   {cell}
@@ -138,7 +138,7 @@ export default function MarkdownRenderer({ content, isStreaming }: MarkdownProps
         const level = headingMatch[1].length;
         const headingText = headingMatch[2];
         const Tag = `h${level}` as 'h1' | 'h2' | 'h3' | 'h4';
-        
+
         const headingStyles: Record<number, string> = {
           1: 'text-xl md:text-2xl font-bold text-white mt-6 mb-3 pb-2 border-b border-white/10 flex items-center gap-2',
           2: 'text-lg md:text-xl font-bold text-white mt-5 mb-2.5',
@@ -292,7 +292,7 @@ export default function MarkdownRenderer({ content, isStreaming }: MarkdownProps
     <div className="ai-prose text-sm md:text-[15px] tracking-normal">
       {renderContent(content)}
       {isStreaming && (
-        <span className="inline-block w-2 h-4 bg-red-500 ml-1 rounded-sm animate-pulse align-middle shadow-[0_0_8px_rgba(239,68,68,0.8)]" />
+        <span className="stream-cursor" />
       )}
     </div>
   );

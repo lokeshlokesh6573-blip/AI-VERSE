@@ -17,6 +17,8 @@ export interface Message {
   attachment?: FileAttachment;
   isStreaming?: boolean;
   isError?: boolean;
+  originalContent?: string;
+  isPinned?: boolean;
 }
 
 // ─── AI Model Configs ─────────────────────────────────────────────────────────
@@ -28,6 +30,11 @@ export interface AIModel {
   contextWindow: number;
   supportsVision: boolean;
   isDefault?: boolean;
+  speed: 1 | 2 | 3 | 4 | 5;         // 5 = fastest
+  intelligence: 1 | 2 | 3 | 4 | 5;  // 5 = most capable
+  useCase: string;                   // best use case
+  cost: 'Free' | 'Low' | 'Medium' | 'High';
+  badge?: string;                    // e.g. 'Vision', 'Fastest'
 }
 
 export const AI_MODELS: AIModel[] = [
@@ -38,6 +45,11 @@ export const AI_MODELS: AIModel[] = [
     contextWindow: 128000,
     supportsVision: false,
     isDefault: true,
+    speed: 3,
+    intelligence: 5,
+    useCase: 'Complex reasoning, code, research',
+    cost: 'Free',
+    badge: 'Best IQ',
   },
   {
     id: 'llama-3.2-11b-vision-instruct',
@@ -45,6 +57,11 @@ export const AI_MODELS: AIModel[] = [
     description: 'Vision + text — analyzes images',
     contextWindow: 128000,
     supportsVision: true,
+    speed: 4,
+    intelligence: 4,
+    useCase: 'Image analysis, OCR, screenshots',
+    cost: 'Free',
+    badge: 'Vision',
   },
   {
     id: 'llama-3.1-8b-instant',
@@ -52,6 +69,11 @@ export const AI_MODELS: AIModel[] = [
     description: 'Lightning fast — great for quick questions',
     contextWindow: 128000,
     supportsVision: false,
+    speed: 5,
+    intelligence: 3,
+    useCase: 'Quick answers, everyday chat',
+    cost: 'Free',
+    badge: 'Fastest',
   },
   {
     id: 'mixtral-8x7b-32768',
@@ -59,6 +81,10 @@ export const AI_MODELS: AIModel[] = [
     description: 'Strong reasoning & multilingual',
     contextWindow: 32768,
     supportsVision: false,
+    speed: 3,
+    intelligence: 4,
+    useCase: 'Reasoning, multilingual chat',
+    cost: 'Free',
   },
   {
     id: 'gemma2-9b-it',
@@ -66,6 +92,10 @@ export const AI_MODELS: AIModel[] = [
     description: 'Google\'s efficient instruction-tuned model',
     contextWindow: 8192,
     supportsVision: false,
+    speed: 4,
+    intelligence: 3,
+    useCase: 'Efficient, focused instruction',
+    cost: 'Free',
   },
 ];
 

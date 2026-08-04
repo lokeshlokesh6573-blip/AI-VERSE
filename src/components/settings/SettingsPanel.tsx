@@ -102,21 +102,82 @@ export default function SettingsPanel({ isOpen, onClose }: SettingsPanelProps) {
                   key={m.id}
                   onClick={() => handleUpdate({ model: m.id })}
                   className={cn(
-                    "p-4 rounded-2xl border text-left transition-all relative",
+                    "p-4 rounded-2xl border text-left transition-all relative flex flex-col gap-2.5",
                     settings.model === m.id 
                       ? "bg-blue-600/10 border-blue-500/50 shadow-lg shadow-blue-900/10" 
                       : "bg-(--bg-card) border-(--border) hover:border-(--text-muted)"
                   )}
                 >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-xs font-bold text-(--text-primary)">{m.name}</span>
+                  <div className="flex items-center justify-between mb-0.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-bold text-(--text-primary)">{m.name}</span>
+                      {m.badge && (
+                        <span className="px-1.5 py-0.5 rounded-full text-[9px] font-mono bg-blue-500/15 text-blue-400 border border-blue-500/30">
+                          {m.badge}
+                        </span>
+                      )}
+                    </div>
                     {m.supportsVision && (
                       <span className="px-2 py-0.5 rounded-full text-[9px] font-mono bg-purple-500/20 text-purple-500 border border-purple-500/30">
                         Vision
                       </span>
                     )}
                   </div>
-                  <p className="text-[11px] text-(--text-secondary) leading-relaxed">{m.description}</p>
+
+                  {/* Speed + Intelligence meters */}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] text-(--text-muted) font-mono uppercase tracking-wider">Speed</span>
+                        <span className="text-[10px] font-mono text-blue-500">{m.speed}/5</span>
+                      </div>
+                      <div className="flex gap-0.5">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <div
+                            key={i}
+                            className={cn(
+                              "h-1 flex-1 rounded-full",
+                              i < m.speed ? "bg-blue-500" : "bg-(--bg-input)"
+                            )}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-[10px] text-(--text-muted) font-mono uppercase tracking-wider">IQ</span>
+                        <span className="text-[10px] font-mono text-purple-500">{m.intelligence}/5</span>
+                      </div>
+                      <div className="flex gap-0.5">
+                        {Array.from({ length: 5 }).map((_, i) => (
+                          <div
+                            key={i}
+                            className={cn(
+                              "h-1 flex-1 rounded-full",
+                              i < m.intelligence ? "bg-purple-500" : "bg-(--bg-input)"
+                            )}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-(--text-secondary) leading-relaxed">{m.useCase}</p>
+
+                  <div className="flex items-center justify-between border-t border-(--border) pt-2">
+                    <span className="text-[10px] font-mono text-(--text-muted) uppercase tracking-wider">
+                      {m.contextWindow >= 100000 ? `${Math.round(m.contextWindow / 1000)}k ctx` : `${Math.round(m.contextWindow / 1000)}k ctx`}
+                    </span>
+                    <span className={cn(
+                      "px-2 py-0.5 rounded-full text-[9px] font-mono border",
+                      m.cost === 'Free'
+                        ? "bg-green-500/10 text-green-500 border-green-500/25"
+                        : "bg-amber-500/10 text-amber-500 border-amber-500/25"
+                    )}>
+                      {m.cost}
+                    </span>
+                  </div>
+
                   {settings.model === m.id && (
                     <div className="absolute top-3 right-3 w-2 h-2 bg-blue-500 rounded-full animate-pulse" />
                   )}

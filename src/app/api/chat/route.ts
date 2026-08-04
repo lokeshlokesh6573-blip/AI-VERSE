@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { webSearch, needsWebSearch } from '@/lib/web-search';
 import { detectModules, buildSystemPrompt, compressConversation } from '@/lib/prompts';
 import { improvePrompt } from '@/lib/prompt-engine';
+import { correctText } from '@/lib/spell-corrector';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { routeRequest } from '@/lib/providers';
 
@@ -38,8 +39,12 @@ export async function POST(req: Request) {
     const lastUserMsg = messages[messages.length - 1]?.content || '';
     const lastUserText = typeof lastUserMsg === 'string' ? lastUserMsg : '';
 
+    // ── Spell check: correct typos before the model sees the text ──
+    const corrected = correctText(lastUserText);
+    const modelInput = corrected.corrected || lastUserText;
+
     // ── Phase 4: Auto-improve vague prompts ──
-    const improvedText = improvePrompt(lastUserText);
+    const improvedText = improvePrompt(modelInput);
 
     // ── Phase 3: Auto-detect if web search needed ──
     let searchResults = '';
@@ -57,6 +62,7 @@ export async function POST(req: Request) {
     let systemContent = buildSystemPrompt(modules, hasSearchResults);
     systemContent += `\n\n${styleInstruction}`;
     systemContent += `\n\nIDENTITY: If asked who created you, say "AI Verse, created by Lokesh."`;
+    systemContent += `\n\nTYPOS: The user's message may contain minor spelling or grammar mistakes. Interpret the intended meaning and respond naturally. Do not lecture about the typos.`;
 
     if (hasSearchResults) {
       systemContent += `\n\n--- LIVE SEARCH RESULTS ---\n${searchResults}\n--- END SEARCH RESULTS ---\nUse these results to answer accurately. Cite sources.`;
@@ -101,7 +107,7 @@ export async function POST(req: Request) {
 
     // ── Local fallback ──
     if (!stream) {
-      const text = lastUserText.toLowerCase();
+      const text = modelInput.toLowerCase();
       let reply = "Systems online. I am AI Verse, created by Lokesh. How can I assist you?";
 
       if (/who created|who built|who made/i.test(text)) {
