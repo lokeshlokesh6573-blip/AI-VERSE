@@ -6,7 +6,11 @@ import {
   Send, Mic, MicOff, Paperclip, Settings, StopCircle,
   Copy, Check, RefreshCw, ChevronDown, X,
   Camera, Sun, Moon, Cpu, Trash2, ThumbsUp, ThumbsDown,
-  Volume2, VolumeX, Edit2, Sparkles, Pin
+  Volume2, VolumeX, Edit2, Sparkles, Pin,
+  Code,
+  PenTool,
+  BarChart2,
+  Search
 } from 'lucide-react';
 import { useSettings } from '@/context/SettingsContext';
 import { getVoiceAssistant } from '@/lib/voice-assistant';
@@ -718,14 +722,14 @@ export default function ChatInterface({
                       </button>
                     </div>
                   </div>
-) : (
-                    /* Standard Message Bubble / Clean layout */
-                    <div
-                      className={`${isUser
-                        ? 'bg-linear-to-r from-red-600 to-red-700 text-white rounded-2xl rounded-tr-sm px-4 md:px-5 py-3 shadow-lg shadow-red-950/30 border border-red-500/20 text-sm md:text-[15px]'
-                        : 'w-full py-1 text-(--msg-ai-text)'
-                        } ${msg.isError ? 'border-red-500/50 bg-red-950/20 p-4 rounded-2xl' : ''}`}
-                    >
+                ) : (
+                  /* Standard Message Bubble / Clean layout */
+                  <div
+                    className={`${isUser
+                      ? 'bg-linear-to-r from-red-600 to-red-700 text-white rounded-2xl rounded-tr-sm px-4 md:px-5 py-3 shadow-lg shadow-red-950/30 border border-red-500/20 text-sm md:text-[15px]'
+                      : 'w-full py-1 text-(--msg-ai-text)'
+                      } ${msg.isError ? 'border-red-500/50 bg-red-950/20 p-4 rounded-2xl' : ''}`}
+                  >
                     {!isUser && msg.isPinned && (
                       <div className="flex items-center gap-1.5 mb-1.5">
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-mono uppercase tracking-wider bg-amber-500/15 text-amber-400 border border-amber-500/30">
